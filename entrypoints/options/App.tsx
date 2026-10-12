@@ -1,0 +1,393 @@
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Separator } from '@/components/ui/separator';
+import { EFFORT_OPTIONS, MODELS, type CacheTtl, type Effort } from '@/lib/models';
+import { getKeyStatus, rpc, type KeyStatus } from '@/lib/rpc';
+import { DEFAULT_SETTINGS, getSettings, onSettingsChanged, updateSettings, type Settings } from '@/lib/settings';
+import { DEFAULT_PASSPHRASE } from '@/lib/vault';
+import { AlertTriangleIcon, CheckCircle2Icon, KeyRoundIcon, LockIcon, LockOpenIcon, SparklesIcon, XCircleIcon } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+
+type Feedback = { ok: boolean; text: string } | null;
+
+function FeedbackLine({ feedback }: { feedback: Feedback }) {
+  if (!feedback) return null;
+  return (
+    <p className={`flex items-center gap-1.5 text-sm ${feedback.ok ? 'text-green-600 dark:text-green-500' : 'text-destructive'}`}>
+      {feedback.ok ? <CheckCircle2Icon className="size-4" /> : <XCircleIcon className="size-4" />}
+      {feedback.text}
+    </p>
+  );
+}
+
+function Field({ id, label, hint, children }: { id: string; label: string; hint?: string; children: React.ReactNode }) {
+  return (
+    <div className="grid gap-1.5">
+      <Label htmlFor={id}>{label}</Label>
+      {children}
+      {hint && <p className="text-muted-foreground text-xs">{hint}</p>}
+    </div>
+  );
+}
+
+function KeyCard({ status, refresh }: { status: KeyStatus; refresh: () => void }) {
+  const [apiKey, setApiKey] = useState('');
+  const [passphrase, setPassphrase] = useState(DEFAULT_PASSPHRASE);
+  const [saveFeedback, setSaveFeedback] = useState<Feedback>(null);
+  const [testFeedback, setTestFeedback] = useState<Feedback>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy('save');
+    const res = await rpc({ type: 'save-key', apiKey, passphrase });
+    setBusy(null);
+    setSaveFeedback(res.ok ? { ok: true, text: 'Saved and unlocked.' } : { ok: false, text: res.error });
+    if (res.ok) setApiKey('');
+    refresh();
+  };
+
+  const test = async () => {
+    setBusy('test');
+    setTestFeedback(null);
+    const res = await rpc({ type: 'test-key', passphrase: status.unlocked ? undefined : passphrase });
+    setBusy(null);
+    setTestFeedback(
+      res.ok
+        ? { ok: true, text: `OK. The key works (${res.models?.length ?? 0} models visible).` }
+        : { ok: false, text: res.error },
+    );
+  };
+
+  const toggleLock = async () => {
+    if (status.unlocked) {
+      await rpc({ type: 'lock' });
+      setTestFeedback(null);
+    } else {
+      setBusy('unlock');
+      const res = await rpc({ type: 'unlock', passphrase });
+      setBusy(null);
+      setTestFeedback(res.ok ? { ok: true, text: 'Unlocked.' } : { ok: false, text: res.error });
+    }
+    refresh();
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <KeyRoundIcon className="size-4" /> API key
+          {status.hasVault ? (
+            <Badge variant="secondary" className="gap-1">
+              {status.unlocked ? <LockOpenIcon className="size-3 text-green-600" /> : <LockIcon className="size-3" />}
+              {status.unlocked ? 'Saved · unlocked' : 'Saved · locked'}
+            </Badge>
+          ) : (
+            <Badge variant="outline">Not set</Badge>
+          )}
+        </CardTitle>
+        <CardDescription>
+          A Claude Console API key (pay-as-you-go, separate from a Claude Pro or Max subscription). It's encrypted with your
+          passphrase (PBKDF2 + AES-GCM) and stored only in this browser. The unlocked key is kept in memory until Vivaldi
+          closes or you lock it.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={save} className="grid gap-4">
+          <Field id="api-key" label={status.hasVault ? 'Replace API key' : 'API key'}>
+            <Input
+              id="api-key"
+              type="password"
+              autoComplete="off"
+              spellCheck={false}
+              placeholder="sk-ant-…"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+            />
+          </Field>
+          <Field
+            id="passphrase"
+            label="Passphrase"
+            hint={`Used to encrypt the key on save, and to unlock or test it while locked. Prefilled with the default "${DEFAULT_PASSPHRASE}".`}
+          >
+            <Input id="passphrase" type="password" value={passphrase} onChange={(e) => setPassphrase(e.target.value)} />
+          </Field>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button type="submit" disabled={!apiKey.trim() || !passphrase || busy !== null}>
+              {busy === 'save' ? 'Encrypting…' : 'Save key'}
+            </Button>
+            <Button type="button" variant="outline" onClick={test} disabled={!status.hasVault || busy !== null}>
+              {busy === 'test' ? 'Testing…' : 'Test key'}
+            </Button>
+            {status.hasVault && (
+              <Button type="button" variant="outline" onClick={toggleLock} disabled={busy !== null}>
+                {status.unlocked ? <LockIcon /> : <LockOpenIcon />}
+                {status.unlocked ? 'Lock' : busy === 'unlock' ? 'Unlocking…' : 'Unlock'}
+              </Button>
+            )}
+          </div>
+          <FeedbackLine feedback={saveFeedback} />
+          <FeedbackLine feedback={testFeedback} />
+        </form>
+      </CardContent>
+      {status.hasVault && (
+        <CardFooter className="flex flex-col items-stretch gap-6 border-t pt-6">
+          <ChangePassphrase refresh={refresh} />
+          <Separator />
+          <RemoveKey refresh={refresh} />
+        </CardFooter>
+      )}
+    </Card>
+  );
+}
+
+function ChangePassphrase({ refresh }: { refresh: () => void }) {
+  const [oldPass, setOldPass] = useState('');
+  const [newPass, setNewPass] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [feedback, setFeedback] = useState<Feedback>(null);
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPass !== confirm) {
+      setFeedback({ ok: false, text: "The new passphrases don't match." });
+      return;
+    }
+    setBusy(true);
+    const res = await rpc({ type: 'change-passphrase', oldPassphrase: oldPass, newPassphrase: newPass });
+    setBusy(false);
+    setFeedback(res.ok ? { ok: true, text: 'Passphrase changed.' } : { ok: false, text: res.error });
+    if (res.ok) {
+      setOldPass('');
+      setNewPass('');
+      setConfirm('');
+    }
+    refresh();
+  };
+
+  return (
+    <form onSubmit={submit} className="grid gap-3">
+      <h3 className="font-medium text-sm">Change passphrase</h3>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Input type="password" placeholder="Current passphrase" value={oldPass} onChange={(e) => setOldPass(e.target.value)} />
+        <Input type="password" placeholder="New passphrase" value={newPass} onChange={(e) => setNewPass(e.target.value)} />
+        <Input type="password" placeholder="Repeat new passphrase" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
+      </div>
+      <div className="flex items-center gap-3">
+        <Button type="submit" variant="outline" disabled={!oldPass || !newPass || busy}>
+          {busy ? 'Re-encrypting…' : 'Change passphrase'}
+        </Button>
+        <FeedbackLine feedback={feedback} />
+      </div>
+    </form>
+  );
+}
+
+function RemoveKey({ refresh }: { refresh: () => void }) {
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <div>
+        <h3 className="font-medium text-sm">Remove key</h3>
+        <p className="text-muted-foreground text-xs">Deletes the encrypted key and forgets the unlocked copy.</p>
+      </div>
+      <Dialog>
+        <DialogTrigger asChild>
+          <Button variant="destructive">Remove key</Button>
+        </DialogTrigger>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Remove the API key?</DialogTitle>
+            <DialogDescription>Hermod won't work until you add a key again.</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="outline">Cancel</Button>
+            </DialogClose>
+            <DialogClose asChild>
+              <Button
+                variant="destructive"
+                onClick={async () => {
+                  await rpc({ type: 'remove-key' });
+                  refresh();
+                }}
+              >
+                Remove
+              </Button>
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function ModelCard({ settings }: { settings: Settings }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Model</CardTitle>
+        <CardDescription>Haiku is fast and cheap and handles clear commands. Switch to Sonnet for fuzzier requests.</CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-4 sm:grid-cols-3">
+        <Field id="model" label="Model">
+          <Select value={settings.model} onValueChange={(model) => void updateSettings({ model })}>
+            <SelectTrigger id="model" className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {MODELS.map((m) => (
+                <SelectItem key={m.id} value={m.id}>
+                  {m.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Field>
+        <Field id="effort" label="Thinking effort" hint={EFFORT_OPTIONS.find((o) => o.value === settings.effort)?.description}>
+          <Select value={settings.effort} onValueChange={(effort) => void updateSettings({ effort: effort as Effort })}>
+            <SelectTrigger id="effort" className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {EFFORT_OPTIONS.map((o) => (
+                <SelectItem key={o.value} value={o.value}>
+                  {o.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Field>
+        <Field
+          id="cache"
+          label="Prompt cache lifetime"
+          hint={
+            settings.cacheTtl === '1h'
+              ? 'Cache survives an hour between commands. Writing it costs 2× instead of 1.25×.'
+              : 'Cheapest when you send commands within 5 minutes of each other.'
+          }
+        >
+          <Select value={settings.cacheTtl} onValueChange={(cacheTtl) => void updateSettings({ cacheTtl: cacheTtl as CacheTtl })}>
+            <SelectTrigger id="cache" className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="5m">5 minutes</SelectItem>
+              <SelectItem value="1h">1 hour</SelectItem>
+            </SelectContent>
+          </Select>
+        </Field>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ShortcutCard() {
+  const [shortcut, setShortcut] = useState<string | null>(null);
+  useEffect(() => {
+    void browser.commands.getAll().then((cmds) => {
+      setShortcut(cmds.find((c) => c.name === '_execute_action')?.shortcut || '');
+    });
+  }, []);
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Keyboard shortcut</CardTitle>
+        <CardDescription>
+          {shortcut ? (
+            <>
+              Open Hermod with <kbd className="rounded border bg-muted px-1.5 py-0.5 font-mono text-xs">{shortcut}</kbd>.
+            </>
+          ) : (
+            'No shortcut is set (another extension or Vivaldi may already use Alt+Space).'
+          )}{' '}
+          Change it on the extension shortcuts page.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Button variant="outline" onClick={() => void browser.tabs.create({ url: 'chrome://extensions/shortcuts' })}>
+          Open extension shortcuts
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+function PageAccessCard() {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Page access</CardTitle>
+        <CardDescription>
+          Hermod has access to all sites so it can read a page's text or links when you ask (for example "which of these tabs
+          mentions pricing?"). It only reads a page when a command needs it, never in the background, and page content is sent
+          to Claude only for that command. Browser-internal pages (vivaldi://, chrome://) and extension stores can't be read.
+        </CardDescription>
+      </CardHeader>
+    </Card>
+  );
+}
+
+export default function App() {
+  const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
+  const [status, setStatus] = useState<KeyStatus | null>(null);
+
+  const refresh = useCallback(() => {
+    void getKeyStatus().then(setStatus);
+    void getSettings().then(setSettings);
+  }, []);
+
+  useEffect(() => {
+    refresh();
+    const off = onSettingsChanged(setSettings);
+    const onSession = (_: unknown, area: string) => area === 'session' && void getKeyStatus().then(setStatus);
+    browser.storage.onChanged.addListener(onSession);
+    return () => {
+      off();
+      browser.storage.onChanged.removeListener(onSession);
+    };
+  }, [refresh]);
+
+  return (
+    <div className="min-h-screen bg-background">
+      <main className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-10">
+        <header className="flex items-center gap-2">
+          <SparklesIcon className="size-5" />
+          <h1 className="font-semibold text-xl">Hermod Agent</h1>
+          <span className="text-muted-foreground text-sm">Settings · Manage keys</span>
+        </header>
+
+        {status?.hasVault && status.usesDefaultPassphrase && (
+          <Alert>
+            <AlertTriangleIcon />
+            <AlertTitle>You're using the default passphrase</AlertTitle>
+            <AlertDescription>
+              "{DEFAULT_PASSPHRASE}" is written in Hermod's source code, so while it's in use the encryption doesn't protect
+              your key. Change it below.
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {status && <KeyCard status={status} refresh={refresh} />}
+        <ModelCard settings={settings} />
+        <ShortcutCard />
+        <PageAccessCard />
+      </main>
+    </div>
+  );
+}

@@ -1,0 +1,46 @@
+// One-off request/response messages from the popup and settings page to the
+// background worker. The worker is the only place the API key is decrypted
+// or used; these messages carry passphrases in, never the key out.
+import type { RunRecord } from './run';
+
+export type RpcRequest =
+  | { type: 'status' }
+  | { type: 'unlock'; passphrase: string }
+  | { type: 'lock' }
+  | { type: 'save-key'; apiKey: string; passphrase: string }
+  | { type: 'change-passphrase'; oldPassphrase: string; newPassphrase: string }
+  | { type: 'remove-key' }
+  | { type: 'test-key'; passphrase?: string }
+  | { type: 'history' }
+  | { type: 'clear-history' };
+
+export type RpcResponse =
+  | {
+      ok: true;
+      hasVault?: boolean;
+      unlocked?: boolean;
+      usesDefaultPassphrase?: boolean;
+      models?: string[];
+      history?: RunRecord[];
+    }
+  | { ok: false; error: string };
+
+export interface KeyStatus {
+  hasVault: boolean;
+  unlocked: boolean;
+  usesDefaultPassphrase: boolean;
+}
+
+export async function rpc(request: RpcRequest): Promise<RpcResponse> {
+  return (await browser.runtime.sendMessage(request)) as RpcResponse;
+}
+
+export async function getKeyStatus(): Promise<KeyStatus> {
+  const res = await rpc({ type: 'status' });
+  if (!res.ok) throw new Error(res.error);
+  return {
+    hasVault: res.hasVault ?? false,
+    unlocked: res.unlocked ?? false,
+    usesDefaultPassphrase: res.usesDefaultPassphrase ?? true,
+  };
+}
