@@ -19,6 +19,9 @@ export default defineConfig({
       'downloads',
       'scripting',
       'system.display',
+      // Copying to the clipboard goes through an offscreen document.
+      'offscreen',
+      'clipboardWrite',
       // Saved threads can outgrow storage.local's 10 MB default.
       'unlimitedStorage',
     ],

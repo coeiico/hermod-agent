@@ -1,6 +1,7 @@
 // Tools that act on tabs.
 import { z } from 'zod';
 import { defineTool } from '../runtime/tools';
+import { writeClipboard } from './clipboard';
 import { describeTabs, getTab, getTabs, getWindow, id, plural, tabIds } from './resolve';
 import { shortUrl } from './snapshot';
 
@@ -163,5 +164,87 @@ export const sortTabs = defineTool({
       await browser.tabs.move(order[i]!, { windowId, index: start + i });
     }
     return `Reordered ${plural(order.length, 'tab')} in W${windowId}.`;
+  },
+});
+
+export const navigateTab = defineTool({
+  name: 'navigate_tab',
+  title: 'Go to URL',
+  effect: 'write',
+  description: 'Load a URL in an existing tab, replacing the page it shows. Use open_tab to open it in a new tab instead.',
+  input: z.object({
+    tabId: id,
+    url: z.string().min(1).describe('Full URL including https://'),
+  }),
+  async run({ tabId, url }) {
+    const tab = await getTab(tabId);
+    await browser.tabs.update(tabId, { url });
+    return `Loaded ${shortUrl(url, 120)} in T${tabId} (was "${tab.title ?? ''}").`;
+  },
+});
+
+export const goBackOrForward = defineTool({
+  name: 'go_back_or_forward',
+  title: 'Back or forward',
+  effect: 'write',
+  description: "Go back or forward one page in a tab's history, like the browser's back and forward buttons.",
+  input: z.object({ tabId: id, direction: z.enum(['back', 'forward']) }),
+  async run({ tabId, direction }) {
+    await getTab(tabId);
+    await (direction === 'back' ? browser.tabs.goBack(tabId) : browser.tabs.goForward(tabId));
+    return `Went ${direction} in T${tabId}.`;
+  },
+});
+
+export const zoomTabs = defineTool({
+  name: 'zoom_tabs',
+  title: 'Zoom tabs',
+  effect: 'write',
+  description:
+    'Set the zoom level of tabs. The browser remembers zoom per site, so other tabs on the same site change too.',
+  input: z.object({
+    tabIds,
+    zoom: z
+      .union([z.number().int().min(25).max(500), z.literal('default')])
+      .describe('Zoom in percent, such as 150, or "default" to reset.'),
+  }),
+  async run({ tabIds, zoom }) {
+    await getTabs(tabIds);
+    // 0 resets to the browser's default zoom.
+    const factor = zoom === 'default' ? 0 : zoom / 100;
+    const results = await Promise.allSettled(tabIds.map((t) => browser.tabs.setZoom(t, factor)));
+    const failed = tabIds.filter((_, i) => results[i]!.status === 'rejected');
+    const ok = tabIds.length - failed.length;
+    const level = zoom === 'default' ? 'the default' : `${zoom}%`;
+    return `Set ${plural(ok, 'tab')} to ${level} zoom.${failed.length ? ` Could not zoom ${failed.map((t) => `T${t}`).join(', ')} (browser-internal pages can't be zoomed by extensions).` : ''}`;
+  },
+});
+
+function markdownLink(title: string, url: string): string {
+  // A parenthesis in the URL would end the Markdown link early.
+  const safeUrl = url.replace(/\(/g, '%28').replace(/\)/g, '%29');
+  return `- [${title.replace(/[[\]]/g, '\\$&')}](${safeUrl})`;
+}
+
+export const copyTabs = defineTool({
+  name: 'copy_tabs',
+  title: 'Copy tabs',
+  effect: 'write',
+  description:
+    "Copy tabs' full URLs to the clipboard in the order given: one URL per line, each title above its URL, or a Markdown list of links.",
+  input: z.object({
+    tabIds,
+    format: z.enum(['urls', 'titles_and_urls', 'markdown']).default('urls'),
+  }),
+  async run({ tabIds, format }) {
+    const tabs = await getTabs(tabIds);
+    const entries = tabs.map((t) => {
+      const url = t.url || t.pendingUrl || '';
+      const title = t.title || url;
+      if (format === 'markdown') return markdownLink(title, url);
+      return format === 'titles_and_urls' ? `${title}\n${url}` : url;
+    });
+    await writeClipboard(entries.join(format === 'titles_and_urls' ? '\n\n' : '\n'));
+    return `Copied ${plural(tabs.length, 'tab')} to the clipboard (${describeTabs(tabs)}).`;
   },
 });

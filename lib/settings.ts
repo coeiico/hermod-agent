@@ -27,9 +27,9 @@ export const DEFAULT_SETTINGS: Settings = {
 };
 
 export const APPROVAL_MODE_OPTIONS: { value: ApprovalMode; label: string; description: string }[] = [
-  { value: 'ask', label: 'Ask first', description: 'Asks before every change to your tabs and windows.' },
-  { value: 'auto', label: 'Auto', description: 'Makes changes, and asks before closing several tabs or a window.' },
-  { value: 'never', label: "Don't ask", description: 'Never asks, even before closing. Closed tabs can be reopened.' },
+  { value: 'ask', label: 'Ask first', description: 'Asks before every change it makes to your browser.' },
+  { value: 'auto', label: 'Auto', description: 'Makes changes, and asks before risky ones, like closing a window or many tabs.' },
+  { value: 'never', label: "Don't ask", description: "Just does it. Still asks before anything that can't be undone, like deleting bookmarks or history." },
 ];
 
 const KEY = 'settings';

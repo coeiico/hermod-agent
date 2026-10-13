@@ -1,10 +1,40 @@
 // Every browser tool, in a fixed order. The order is part of the prompt-cache
 // prefix: append new tools at the end and never reorder.
 import type { Tool } from '../runtime/tools';
-import { createBookmark, listDownloads, restoreClosed, searchBookmarks, searchHistory } from './library';
+import {
+  controlDownloads,
+  createBookmark,
+  deleteBookmarks,
+  deleteHistory,
+  downloadFile,
+  listBookmarks,
+  listDownloads,
+  moveBookmarks,
+  restoreClosed,
+  searchBookmarks,
+  searchHistory,
+  showDownload,
+  sortBookmarks,
+  updateBookmark,
+} from './library';
 import { getPageLinks, getPageText } from './pages';
 import { refreshSnapshot } from './snapshot';
-import { activateTab, closeTabs, discardTabs, duplicateTab, moveTabs, muteTabs, openTab, pinTabs, reloadTabs, sortTabs } from './tabs';
+import {
+  activateTab,
+  closeTabs,
+  copyTabs,
+  discardTabs,
+  duplicateTab,
+  goBackOrForward,
+  moveTabs,
+  muteTabs,
+  navigateTab,
+  openTab,
+  pinTabs,
+  reloadTabs,
+  sortTabs,
+  zoomTabs,
+} from './tabs';
 import { closeWindow, focusWindow, mergeWindows, newWindowWithTabs, setWindowState } from './windows';
 
 export const BROWSER_TOOLS: readonly Tool[] = [
@@ -31,6 +61,19 @@ export const BROWSER_TOOLS: readonly Tool[] = [
   getPageLinks,
   listDownloads,
   refreshSnapshot,
+  listBookmarks,
+  updateBookmark,
+  moveBookmarks,
+  sortBookmarks,
+  deleteBookmarks,
+  navigateTab,
+  goBackOrForward,
+  zoomTabs,
+  copyTabs,
+  downloadFile,
+  showDownload,
+  controlDownloads,
+  deleteHistory,
 ];
 
 /** The UI label for a tool, falling back to its name. */

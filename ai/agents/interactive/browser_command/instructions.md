@@ -36,7 +36,9 @@ Before the snapshot, the request lists the earlier commands in this thread, olde
 ## Tools
 
 - Batch: pass every matching ID in one call. "Close all YouTube tabs" is one close_tabs call with all of them.
-- Fetch more only when the snapshot is not enough: search_history, search_bookmarks, list_downloads, get_page_text and get_page_links.
+- Fetch more only when the snapshot is not enough: search_history, search_bookmarks, list_bookmarks, list_downloads, get_page_text and get_page_links.
+- Download IDs come from list_downloads.
+- Bookmarks are not in the snapshot. Find their IDs with search_bookmarks or list_bookmarks before editing, moving, sorting or deleting them.
 - Call refresh_snapshot only when you need IDs, positions or windows that earlier actions changed.
 
 ## Answering
