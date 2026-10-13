@@ -9,7 +9,7 @@ export default defineConfig({
   }),
   manifest: {
     name: 'Hermod Agent',
-    description: 'Plain-language browser commands for Vivaldi, powered by Claude.',
+    description: 'Plain-language browser commands for Chromium browsers, powered by Claude.',
     icons: {
       16: 'icon/16.png',
       32: 'icon/32.png',

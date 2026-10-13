@@ -41,7 +41,7 @@ export async function rpc(request: RpcRequest): Promise<RpcResponse> {
   const res = (await browser.runtime.sendMessage(request)) as RpcResponse | undefined;
   // No answer means the worker doesn't handle this request: it is older than
   // the popup, which happens when a new build is loaded without reloading.
-  if (!res) throw new Error(`The background worker did not answer "${request.type}". Reload Hermod in vivaldi://extensions.`);
+  if (!res) throw new Error(`The background worker did not answer "${request.type}". Reload Hermod on the browser's extensions page.`);
   return res;
 }
 

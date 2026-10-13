@@ -1,6 +1,6 @@
 {
   "name": "hermod-agent",
-  "description": "Hermod Agent: plain-language browser commands for Vivaldi, powered by Claude",
+  "description": "Hermod Agent: plain-language browser commands for Chromium browsers, powered by Claude",
   "private": true,
   "version": "0.1.0",
   "type": "module",

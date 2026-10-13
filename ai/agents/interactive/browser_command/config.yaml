@@ -1,4 +1,4 @@
-id: browser_command.v7
+id: browser_command.v8
 # The default; the model picker in the popup and Settings overrides it.
 model: claude-haiku-5-5
 # Clear commands rarely need much thought, and low effort keeps them fast.

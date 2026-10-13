@@ -39,7 +39,7 @@ export function UnlockDialog({
           <DialogHeader>
             <DialogTitle>Unlock your API key</DialogTitle>
             <DialogDescription>
-              Enter your passphrase. The key stays unlocked until Vivaldi closes or you press Lock.
+              Enter your passphrase. The key stays unlocked until the browser closes or you press Lock.
             </DialogDescription>
           </DialogHeader>
           <Input

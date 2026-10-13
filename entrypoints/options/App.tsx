@@ -106,7 +106,7 @@ function KeyCard({ status, refresh }: { status: KeyStatus; refresh: () => void }
         </CardTitle>
         <CardDescription>
           A Claude Console API key (pay-as-you-go, separate from a Claude Pro or Max subscription). It's encrypted with your
-          passphrase (PBKDF2 + AES-GCM) and stored only in this browser. The unlocked key is kept in memory until Vivaldi
+          passphrase (PBKDF2 + AES-GCM) and stored only in this browser. The unlocked key is kept in memory until the browser
           closes or you lock it.
         </CardDescription>
       </CardHeader>
@@ -471,7 +471,7 @@ function PageAccessCard() {
         <CardDescription>
           Hermod has access to all sites so it can read a page's text or links when you ask (for example "which of these tabs
           mentions pricing?"). It only reads a page when a command needs it, never in the background, and page content is sent
-          to Claude only for that command. Browser-internal pages (vivaldi://, chrome://) and extension stores can't be read.
+          to Claude only for that command. Browser-internal pages (chrome://, vivaldi://, edge://) and extension stores can't be read.
         </CardDescription>
       </CardHeader>
     </Card>
