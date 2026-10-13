@@ -60,9 +60,11 @@ export function createModel(log, base) {
       const steps = [
         { tabId, text: 'Ethiopian Yirgacheffe' },
         { tabId, selector: '#cartlink', properties: ['text-decoration-line'] },
+        { tabId },
         { tabId, x: 60, y: 55 },
       ];
-      if (assistantTurns < steps.length) return respond('claude-haiku-5-5', [tool('inspect_element', steps[assistantTurns])], 'tool_use');
+      const name = assistantTurns === 2 ? 'screenshot' : 'inspect_element';
+      if (assistantTurns < steps.length) return respond('claude-haiku-5-5', [tool(name, steps[assistantTurns])], 'tool_use');
       return respond('claude-haiku-5-5', [text('The heading is set in Inter.')], 'end_turn');
     }
     if (command.startsWith('feedback ')) {

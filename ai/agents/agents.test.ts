@@ -94,7 +94,7 @@ describe('browser_command', () => {
 describe('web_task', () => {
   it('has the web task tools and report_result, and no tab or library tools', () => {
     expect(webTaskAgent.tools.map((t) => t.name)).toEqual([...WEB_TASK_TOOLS.map((t) => t.name), 'report_result']);
-    // inspect_element shares its name with the main agent's, but is the web task's own, scoped to its pages.
+    // screenshot and inspect_element share their names with the main agent's, but are the web task's own, scoped to its pages.
     expect(webTaskAgent.tools.filter((t) => BROWSER_TOOLS.includes(t)).map((t) => t.name)).toEqual([]);
   });
 

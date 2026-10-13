@@ -21,7 +21,7 @@ ai/
     scope.ts                A web task's pages (its window, its brief's tab): scopedTab() is the page tools' trust boundary
     snapshot.ts             buildSnapshot() and the refresh_snapshot tool
     tabs.ts, windows.ts, library.ts
-    pages.ts                Reading a page: get_page_text/get_page_links (main agent), read_page/find/screenshot (web task), inspect_element (both)
+    pages.ts                Reading a page: get_page_text/get_page_links (main agent), read_page/find (web task), screenshot/inspect_element (each its own)
     page-script.ts          The function injected into pages: outlines, refs, clicking, typing, keys, inspecting (self-contained)
     page-actions.ts         click, click_at, type_text, select_option, press_key, scroll, wait_for
     page-guardrails.ts      refusal() and risk(): the hard-coded rules for acting in a page

@@ -18,7 +18,7 @@ import {
   updateBookmark,
 } from './library';
 import { click, clickAt, pressKey, scrollPage, selectOption, typeText, waitFor } from './page-actions';
-import { findInPage, getPageLinks, getPageText, inspectElement, inspectPageElement, readPage, screenshot } from './pages';
+import { findInPage, getPageLinks, getPageText, inspectElement, inspectPageElement, readPage, screenshot, screenshotTab } from './pages';
 import { refreshSnapshot } from './snapshot';
 import {
   activateTab,
@@ -77,6 +77,7 @@ export const BROWSER_TOOLS: readonly Tool[] = [
   controlDownloads,
   deleteHistory,
   inspectElement,
+  screenshotTab,
 ];
 
 /** The tools a web task works with inside its own pages, in a fixed order (append only, as above). */

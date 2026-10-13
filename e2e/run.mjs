@@ -269,7 +269,7 @@ try {
   await cdp.evaluate(ctl, `chrome.storage.local.set({ settings: {} }).then(() => true)`);
 
   // ------------------------------------------------ inspecting a page
-  // By text, by selector and by point, on the shop the user has open.
+  // By text, by selector and by point, on the shop the user has open. A point needs a screenshot first.
   await send({ type: 'new-thread' });
   await sleep(200);
   const seen = model.state.results.length;
@@ -279,10 +279,11 @@ try {
     if (!state.run && state.thread?.turns?.length) break;
     await sleep(100);
   }
-  const [byText = '', bySelector = '', byPoint = ''] = model.state.results.slice(seen).map(([, r]) => r);
+  const [byText = '', bySelector = '', shotResult = '', byPoint = ''] = model.state.results.slice(seen).map(([, r]) => r);
   check(/heading1 "Ethiopian Yirgacheffe"[\s\S]*renders in Inter Variable \(a web font the page loads\)/.test(byText), 'inspect_element by text names the web font the heading renders in');
   check(/link "Cart \(\d+\)"[\s\S]*renders in the browser's default sans-serif font/.test(bySelector), 'inspect_element by selector names the fallback font');
   check(/href="http:\/\/127\.0\.0\.1:\d+\/cart"/.test(bySelector) && /text-decoration-line: underline/.test(bySelector), 'inspect_element resolves the link and reads an extra property');
+  check(/^Screenshot of T\d+ "Coffee shop/.test(shotResult), `the main agent took a screenshot of the user's tab (${shotResult.slice(0, 120)})`);
   check(/heading1 "Ethiopian Yirgacheffe" at \d+,\d+/.test(byPoint), `inspect_element by point found the heading (${byPoint.split('\n')[3] ?? byPoint})`);
 
   // ------------------------------------------------ the popup, rendered
