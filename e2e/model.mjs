@@ -55,6 +55,16 @@ export function createModel(log, base) {
     if (result) state.results.push(['main', result]);
     const command = textOf(body.messages[0].content).match(/<command>\n([\s\S]*?)\n<\/command>/)?.[1] ?? '';
     if (/^(slow|quick) /.test(command)) return respond('claude-haiku-5-5', [text(`Did: ${command}`)], 'end_turn');
+    if (command.startsWith('inspect ')) {
+      const tabId = Number(textOf(body.messages[0].content).match(/T(\d+) #\d+ [^\n]*"Coffee shop/)?.[1]);
+      const steps = [
+        { tabId, text: 'Ethiopian Yirgacheffe' },
+        { tabId, selector: '#cartlink', properties: ['text-decoration-line'] },
+        { tabId, x: 60, y: 55 },
+      ];
+      if (assistantTurns < steps.length) return respond('claude-haiku-5-5', [tool('inspect_element', steps[assistantTurns])], 'tool_use');
+      return respond('claude-haiku-5-5', [text('The heading is set in Inter.')], 'end_turn');
+    }
     if (command.startsWith('feedback ')) {
       if (assistantTurns === 0) {
         const tab = textOf(body.messages[0].content).match(/T(\d+) #\d+ [^\n]*"Coffee shop/)?.[1];

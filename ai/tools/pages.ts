@@ -2,7 +2,7 @@
 // pages can contain instructions aimed at the model.
 import { z } from 'zod';
 import { defineTool } from '../runtime/tools';
-import { pageScript, type PageReply, type PageRequest } from './page-script';
+import { pageScript, type InspectTarget, type PageReply, type PageRequest } from './page-script';
 import { getTab, id, type Tab } from './resolve';
 import { scopedTab } from './scope';
 import { shortUrl } from './snapshot';
@@ -87,6 +87,57 @@ export const getPageLinks = defineTool({
     const links = (result?.result as [string, string][] | undefined) ?? [];
     if (!links.length) return `No links found on T${tabId}.`;
     return links.map(([text, href]) => `"${text.replace(/\s+/g, ' ')}" ${href}`).join('\n');
+  },
+});
+
+// ------------------------------------------------------------ inspecting elements
+
+const INSPECTS =
+  'the font its text renders in (not just the CSS list), size, weight and colours, where it sits on screen, its place in the page, and its attributes (link targets, image sources)';
+
+/** inspect_element's input; the two agents differ only in what a point means. */
+function inspectInput(point: string) {
+  return z
+    .object({
+      tabId: id,
+      text: z.string().min(1).max(200).optional().describe('Text the element shows, or its label. The element holding it most closely is inspected.'),
+      selector: z.string().min(1).max(500).optional().describe('A CSS selector, like "h1" or "header img".'),
+      ref: z.string().min(1).optional().describe('A ref from an earlier result, like k4.12.'),
+      x: z.number().min(0).optional().describe(point),
+      y: z.number().min(0).optional(),
+      properties: z
+        .array(z.string().regex(/^-{0,2}[a-z][a-z0-9-]*$/))
+        .max(20)
+        .default([])
+        .describe('Other CSS properties to read, like "text-shadow" or "border-radius".'),
+      limit: z.number().int().min(1).max(20).default(5).describe('How many matching elements to show.'),
+    })
+    .refine(
+      (v) => [v.text, v.selector, v.ref, v.x ?? v.y].filter((t) => t !== undefined).length === 1 && (v.x === undefined) === (v.y === undefined),
+      'Give exactly one of text, selector, ref, or x and y together.',
+    );
+}
+
+type InspectInput = z.infer<ReturnType<typeof inspectInput>>;
+
+function inspectTarget(input: InspectInput, toPage: (x: number, y: number) => { x: number; y: number }): InspectTarget {
+  if (input.text !== undefined) return { text: input.text };
+  if (input.selector !== undefined) return { selector: input.selector };
+  if (input.ref !== undefined) return { ref: input.ref };
+  return toPage(input.x!, input.y!);
+}
+
+export const inspectElement = defineTool({
+  name: 'inspect_element',
+  title: 'Inspect element',
+  effect: 'read',
+  description: `Inspect elements on a tab's page: ${INSPECTS}. Use it for how something on a page looks or is built. Find them by text, a CSS selector, a ref from an earlier result, or a point in the visible area.`,
+  input: inspectInput("A point's x in CSS pixels from the visible area's top-left corner, with y; the result gives the viewport's size."),
+  async run(input) {
+    const { tabId, properties, limit } = input;
+    await injectableTab(tabId);
+    const target = inspectTarget(input, (x, y) => ({ x, y }));
+    return `T${tabId} ${await runInPage<string>(tabId, { op: 'inspect', target, properties, limit })}`;
   },
 });
 
@@ -187,5 +238,19 @@ export const screenshot = defineTool({
       image: { mediaType: 'image/jpeg', data: shot.data },
       pageView: true,
     };
+  },
+});
+
+export const inspectPageElement = defineTool({
+  name: 'inspect_element',
+  title: 'Inspect element',
+  effect: 'read',
+  description: `Inspect elements on one of your pages: ${INSPECTS}. Use it when the outline and screenshot don't say how something looks or where it points. Find them by ref, text, a CSS selector, or a point in your latest screenshot.`,
+  input: inspectInput("A point's x in the tab's latest screenshot (the image's pixels), with y."),
+  async run(input, ctx) {
+    const { tabId, properties, limit } = input;
+    checkInjectable(await scopedTab(tabId, ctx));
+    const target = inspectTarget(input, (x, y) => screenshotToPage(tabId, x, y));
+    return `T${tabId} ${await runInPage<string>(tabId, { op: 'inspect', target, properties, limit })}`;
   },
 });

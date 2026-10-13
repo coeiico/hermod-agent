@@ -268,6 +268,23 @@ try {
   check(sentAfter === 'Feedback sent', 'approving let the click through');
   await cdp.evaluate(ctl, `chrome.storage.local.set({ settings: {} }).then(() => true)`);
 
+  // ------------------------------------------------ inspecting a page
+  // By text, by selector and by point, on the shop the user has open.
+  await send({ type: 'new-thread' });
+  await sleep(200);
+  const seen = model.state.results.length;
+  await send({ type: 'run', command: 'inspect the fonts on this shop' });
+  for (let i = 0; i < 50; i++) {
+    state = await lastState();
+    if (!state.run && state.thread?.turns?.length) break;
+    await sleep(100);
+  }
+  const [byText = '', bySelector = '', byPoint = ''] = model.state.results.slice(seen).map(([, r]) => r);
+  check(/heading1 "Ethiopian Yirgacheffe"[\s\S]*renders in Inter Variable \(a web font the page loads\)/.test(byText), 'inspect_element by text names the web font the heading renders in');
+  check(/link "Cart \(\d+\)"[\s\S]*renders in the browser's default sans-serif font/.test(bySelector), 'inspect_element by selector names the fallback font');
+  check(/href="http:\/\/127\.0\.0\.1:\d+\/cart"/.test(bySelector) && /text-decoration-line: underline/.test(bySelector), 'inspect_element resolves the link and reads an extra property');
+  check(/heading1 "Ethiopian Yirgacheffe" at \d+,\d+/.test(byPoint), `inspect_element by point found the heading (${byPoint.split('\n')[3] ?? byPoint})`);
+
   // ------------------------------------------------ the popup, rendered
   await send({ type: 'open-thread', threadId });
   await sleep(300);

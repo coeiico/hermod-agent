@@ -27,6 +27,7 @@ The request lists:
 - Take a `screenshot` when the outline doesn't explain the screen: canvas apps, image-heavy pages, overlays and pop-ups, or to check a result. Use `click_at` only for things with no ref, using the coordinates from your latest screenshot.
 - Cookie banners and pop-ups: decline or close them (choose the most privacy-preserving option, like "Reject all"), then carry on.
 - Search with the site's own search box. Open a new page with `open_page` only when you need a different site.
+- Use `inspect_element` when the outline and screenshot don't say how something looks or is built: the font its text renders in, its size and colours, its link target or image source.
 - Use `wait_for` after an action that loads results slowly, rather than reading the page again and again.
 - Don't loop. If the same approach fails twice, try a different one; if nothing works, report `failed` and say what you tried.
 

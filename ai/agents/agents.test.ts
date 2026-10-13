@@ -94,8 +94,8 @@ describe('browser_command', () => {
 describe('web_task', () => {
   it('has the web task tools and report_result, and no tab or library tools', () => {
     expect(webTaskAgent.tools.map((t) => t.name)).toEqual([...WEB_TASK_TOOLS.map((t) => t.name), 'report_result']);
-    const browserNames = new Set(BROWSER_TOOLS.map((t) => t.name));
-    expect(webTaskAgent.tools.filter((t) => browserNames.has(t.name))).toEqual([]);
+    // inspect_element shares its name with the main agent's, but is the web task's own, scoped to its pages.
+    expect(webTaskAgent.tools.filter((t) => BROWSER_TOOLS.includes(t)).map((t) => t.name)).toEqual([]);
   });
 
   it('renders its task with every part of the brief', () => {

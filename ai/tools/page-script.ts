@@ -40,7 +40,12 @@ export type PageRequest =
   | { op: 'has'; text?: string; ref?: string }
   | { op: 'viewport' }
   /** Resolves once the DOM has been quiet for a moment (capped). */
-  | { op: 'quiet' };
+  | { op: 'quiet' }
+  /** How elements look and are built: font, box, colours, attributes, and any extra CSS properties named. */
+  | { op: 'inspect'; target: InspectTarget; properties: string[]; limit: number };
+
+/** The elements to inspect: by ref, CSS selector, the text they hold, or the point in CSS pixels. */
+export type InspectTarget = { ref: string } | { selector: string } | { text: string } | { x: number; y: number };
 
 export type PageReply = { ok: true; value: unknown } | { ok: false; error: string };
 
@@ -488,6 +493,149 @@ export function pageScript(request: PageRequest): PageReply | Promise<PageReply>
     });
   }
 
+  const GENERIC_FAMILIES = new Set([
+    'serif', 'sans-serif', 'monospace', 'cursive', 'fantasy', 'system-ui', 'ui-serif', 'ui-sans-serif', 'ui-monospace',
+    'ui-rounded', 'math', 'emoji', 'fangsong',
+  ]);
+  const unquote = (family: string) => family.trim().replace(/^(['"])(.*)\1$/, '$2');
+  let canvas: CanvasRenderingContext2D | null = null;
+
+  /** Whether a font that isn't a web font is installed: text set in it measures differently from the fallback alone. */
+  function installed(family: string, style: CSSStyleDeclaration): boolean {
+    const ctx = (canvas ??= document.createElement('canvas').getContext('2d'));
+    if (!ctx) return false;
+    const sample = 'mmmmmmmmmmlli1WQ@';
+    return ['monospace', 'serif'].some((fallback) => {
+      ctx.font = `${style.fontStyle} ${style.fontWeight} 72px ${fallback}`;
+      const alone = ctx.measureText(sample).width;
+      ctx.font = `${style.fontStyle} ${style.fontWeight} 72px "${family.replace(/"/g, '')}", ${fallback}`;
+      return ctx.measureText(sample).width !== alone;
+    });
+  }
+
+  /**
+   * The first family in the element's font-family list that the browser can
+   * use, which is what its text renders in (bar glyphs the font lacks). CSS
+   * only names the list; the page's loaded web fonts and what the system has
+   * installed decide which one wins.
+   */
+  function renderedFont(style: CSSStyleDeclaration): string {
+    const faces = Array.from(document.fonts);
+    for (const family of style.fontFamily.split(',').map(unquote).filter(Boolean)) {
+      const name = family.toLowerCase();
+      if (GENERIC_FAMILIES.has(name)) return `the browser's default ${family} font`;
+      const declared = faces.filter((f) => unquote(f.family).toLowerCase() === name);
+      if (declared.some((f) => f.status === 'loaded')) return `${family} (a web font the page loads)`;
+      if (declared.some((f) => f.status === 'loading')) return `${family} (a web font still loading)`;
+      if (!declared.length && installed(family, style)) return `${family} (installed on this computer)`;
+    }
+    return "the browser's default font";
+  }
+
+  function tagOf(el: Element): string {
+    const classes = Array.from(el.classList).slice(0, 3).map((c) => `.${c}`).join('');
+    return clip(`${el.tagName.toLowerCase()}${el.id ? `#${el.id}` : ''}${classes}`, 80);
+  }
+
+  const transparent = (color: string) => color === 'transparent' || /^rgba\(.*,\s*0\)$/.test(color);
+
+  /** The background colour the element's text sits on: its own, or the nearest ancestor's. */
+  function backdrop(el: Element): string {
+    for (let at: Element | null = el; at; at = at.parentElement) {
+      const color = getComputedStyle(at).backgroundColor;
+      if (!transparent(color)) return at === el ? color : `${color} (from ${tagOf(at)})`;
+    }
+    return "no background colour (the browser's default, usually white)";
+  }
+
+  function attributesOf(el: Element): string {
+    const shown = Array.from(el.attributes)
+      .filter((a) => a.name !== 'id' && a.name !== 'class')
+      .slice(0, 15)
+      .map((a) => {
+        // Resolved, so relative links and lazy images show where they really point.
+        let value = a.value;
+        if (a.name === 'href' && (el instanceof HTMLAnchorElement || el instanceof HTMLAreaElement)) value = el.href;
+        if (a.name === 'src' && el instanceof HTMLImageElement) value = el.currentSrc || el.src;
+        return `${a.name}=${quote(clip(squash(value), 120))}`;
+      });
+    return shown.join(' ');
+  }
+
+  function inspectOne(el: Element, properties: string[]): string {
+    const style = getComputedStyle(el);
+    const rect = el.getBoundingClientRect();
+    const role = roleOf(el);
+    const name = nameOf(el);
+    const lines = [
+      `[${refFor(el)}] ${role === 'generic' ? el.tagName.toLowerCase() : role}${name ? ` ${quote(name)}` : ''} at ${Math.round(rect.left)},${Math.round(rect.top)} size ${Math.round(rect.width)}x${Math.round(rect.height)}${isVisible(el) ? '' : ' (hidden)'}`,
+    ];
+    const path: string[] = [];
+    for (let at: Element | null = el; at && path.length < 5; at = at.parentElement) {
+      path.unshift(tagOf(at));
+      if (at === document.body) break;
+    }
+    lines.push(`  in: ${path.join(' > ')}`);
+    const drawn = el instanceof HTMLImageElement || el instanceof HTMLCanvasElement || (el instanceof SVGElement && !squash(el.textContent));
+    if (drawn) {
+      lines.push("  an image: lettering in it is drawn, not text, so its font can't be read from the page.");
+    } else {
+      lines.push(`  font: renders in ${renderedFont(style)}; font-family: ${style.fontFamily}`);
+      lines.push(`  text: ${style.fontSize}, weight ${style.fontWeight}, ${style.fontStyle}, line-height ${style.lineHeight}, letter-spacing ${style.letterSpacing}`);
+      lines.push(`  colour: ${style.color} on ${backdrop(el)}`);
+    }
+    if (style.backgroundImage !== 'none') lines.push(`  background-image: ${clip(style.backgroundImage, 200)}`);
+    const attributes = attributesOf(el);
+    if (attributes) lines.push(`  attributes: ${attributes}`);
+    lines.push(`  layout: display ${style.display}, position ${style.position}`);
+    for (const property of properties) lines.push(`  ${property}: ${clip(style.getPropertyValue(property), 200) || '(not set)'}`);
+    return lines.join('\n');
+  }
+
+  /** The visible elements that hold `needle` most closely: an element is dropped when one inside it matches too. */
+  function holding(needle: string): Element[] {
+    const hits: Element[] = [];
+    walk((el) => {
+      if (!`${squash(el.textContent)} ${labelText(el)}`.toLowerCase().includes(needle)) return;
+      for (let i = hits.length - 1; i >= 0; i--) if (hits[i]!.contains(el)) hits.splice(i, 1);
+      hits.push(el);
+    });
+    // textContent counts inline scripts and hidden text; keep what a reader sees.
+    return hits.filter((el) => `${squash((el as HTMLElement).innerText ?? el.textContent)} ${labelText(el)}`.toLowerCase().includes(needle));
+  }
+
+  function inspect(target: InspectTarget, properties: string[], limit: number): string {
+    const header = [
+      `${quote(clip(squash(document.title), 100))} ${location.href.slice(0, 200)}`,
+      `Viewport ${innerWidth}x${innerHeight}, scrolled ${Math.round(scrollY)}px of ${document.documentElement.scrollHeight}px. Positions are CSS pixels from the visible area's top-left corner.`,
+      '',
+    ];
+    let found: Element[];
+    let what: string;
+    if ('ref' in target) {
+      found = [byRef(target.ref)];
+      what = target.ref;
+    } else if ('selector' in target) {
+      try {
+        found = Array.from(document.querySelectorAll(target.selector));
+      } catch {
+        throw new Error(`${quote(target.selector)} is not a valid CSS selector.`);
+      }
+      what = `the selector ${quote(target.selector)}`;
+    } else if ('text' in target) {
+      found = holding(squash(target.text).toLowerCase());
+      what = quote(target.text);
+    } else {
+      const hit = document.elementFromPoint(target.x, target.y);
+      found = hit ? [hit] : [];
+      what = `${Math.round(target.x)},${Math.round(target.y)}`;
+    }
+    if (!found.length) return [...header, `Nothing on the page matches ${what}.`].join('\n');
+    const shown = found.slice(0, limit).map((el) => inspectOne(el, properties));
+    if (found.length > limit) shown.push(`… ${found.length - limit} more matches.`);
+    return [...header, ...shown].join('\n');
+  }
+
   try {
     switch (request.op) {
       case 'outline':
@@ -539,6 +687,8 @@ export function pageScript(request: PageRequest): PageReply | Promise<PageReply>
         return { ok: true, value: { dpr: devicePixelRatio, width: innerWidth, height: innerHeight } };
       case 'quiet':
         return quiet();
+      case 'inspect':
+        return { ok: true, value: inspect(request.target, request.properties, request.limit) };
     }
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };

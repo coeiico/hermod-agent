@@ -1,8 +1,11 @@
 // A tiny shop to drive: product page, cart, checkout with a card field and a Place order button.
+// The product heading is set in a web font the shop serves, for inspect_element.
+import { readFileSync } from 'node:fs';
 import http from 'node:http';
 
 const page = (title, body) => `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title>
-<style>body{font:16px sans-serif;margin:40px} button,a{font-size:16px} .row{margin:12px 0}</style></head><body>${body}</body></html>`;
+<style>@font-face{font-family:'Inter Variable';src:url(/inter.woff2) format('woff2')} h1{font-family:'Inter Variable',sans-serif}
+body{font:16px sans-serif;margin:40px} button,a{font-size:16px} .row{margin:12px 0}</style></head><body>${body}</body></html>`;
 
 const shop = page('Coffee shop — Ethiopian beans', `
 <h1>Ethiopian Yirgacheffe</h1>
@@ -41,9 +44,15 @@ const checkout = page('Checkout', `<h1>Checkout</h1>
   document.querySelector('input[name=email]').addEventListener('input', (e) => { model.textContent = e.target.value; });
 </script>`);
 
+const font = readFileSync(new URL('../node_modules/@fontsource-variable/inter/files/inter-latin-wght-normal.woff2', import.meta.url));
+
 export function startSite() {
   const server = http.createServer((req, res) => {
     const path = new URL(req.url, 'http://x').pathname;
+    if (path === '/inter.woff2') {
+      res.writeHead(200, { 'content-type': 'font/woff2' });
+      return res.end(font);
+    }
     const body = path === '/cart' ? cart : path === '/checkout' ? checkout : shop;
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
     res.end(body);
