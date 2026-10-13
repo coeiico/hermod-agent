@@ -78,7 +78,7 @@ function ToolCall({ part, onApprove }: { part: DynamicToolUIPart; onApprove: (ap
           <ConfirmationAction variant="outline" onClick={() => part.approval && onApprove(part.approval.id, false)}>
             No
           </ConfirmationAction>
-          <ConfirmationAction autoFocus onClick={() => part.approval && onApprove(part.approval.id, true)}>
+          <ConfirmationAction onClick={() => part.approval && onApprove(part.approval.id, true)}>
             Yes
           </ConfirmationAction>
         </ConfirmationActions>
