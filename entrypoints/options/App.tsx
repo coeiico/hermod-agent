@@ -19,9 +19,9 @@ import { Separator } from '@/components/ui/separator';
 import { EFFORT_OPTIONS, MODELS } from '@/ai/models';
 import type { CacheTtl, Effort } from '@/ai/runtime/definition';
 import { getKeyStatus, rpc, type KeyStatus } from '@/lib/rpc';
-import { OPEN_COMMAND } from '@/lib/detached-window';
 import { APPROVAL_MODE_OPTIONS, DEFAULT_SETTINGS, getSettings, onSettingsChanged, updateSettings, type Settings } from '@/lib/settings';
 import type { ThreadSummary } from '@/lib/threads';
+import { OPEN_COMMAND, POPUP_COMMAND } from '@/lib/detached-window';
 import { DEFAULT_PASSPHRASE } from '@/lib/vault';
 import { AlertTriangleIcon, CheckCircle2Icon, KeyRoundIcon, LockIcon, LockOpenIcon, XCircleIcon } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
@@ -327,30 +327,41 @@ function ModelCard({ settings }: { settings: Settings }) {
   );
 }
 
+function Key({ shortcut }: { shortcut: string | undefined }) {
+  if (!shortcut) return <span className="text-ink-3">not set</span>;
+  return <kbd className="rounded-[6px] border border-line bg-surface-alt px-1.5 py-0.5 font-mono text-xs">{shortcut}</kbd>;
+}
+
 function ShortcutCard() {
-  const [shortcut, setShortcut] = useState<string | null>(null);
+  const [shortcuts, setShortcuts] = useState<Record<string, string>>({});
   useEffect(() => {
-    void browser.commands.getAll().then((cmds) => {
-      setShortcut(cmds.find((c) => c.name === OPEN_COMMAND)?.shortcut || '');
-    });
+    void browser.commands.getAll().then((cmds) => setShortcuts(Object.fromEntries(cmds.map((c) => [c.name ?? '', c.shortcut ?? '']))));
   }, []);
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Keyboard shortcut</CardTitle>
-        <CardDescription>
-          {shortcut ? (
-            <>
-              Open Hermod with <kbd className="rounded-[6px] border border-line bg-surface-alt px-1.5 py-0.5 font-mono text-xs">{shortcut}</kbd>.
-            </>
-          ) : (
-            'No shortcut is set (another extension or Vivaldi may already use Alt+Space).'
-          )}{' '}
-          Change it on the extension shortcuts page.
-        </CardDescription>
+        <CardTitle>Keyboard shortcuts</CardTitle>
+        <CardDescription>Two ways to open Hermod from the keyboard; keep whichever suits your browser. Change them on the extension shortcuts page.</CardDescription>
       </CardHeader>
-      <CardContent>
-        <Button variant="outline" onClick={() => void browser.tabs.create({ url: 'chrome://extensions/shortcuts' })}>
+      <CardContent className="flex flex-col gap-4">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h3 className="font-medium text-base">Popup</h3>
+            <p className="text-ink-3 text-xs">The toolbar popup, opened by the browser. In Vivaldi it can open in another window.</p>
+          </div>
+          <Key shortcut={shortcuts[POPUP_COMMAND]} />
+        </div>
+        <Separator />
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h3 className="font-medium text-base">Over the window in use</h3>
+            <p className="text-ink-3 text-xs">
+              A Hermod window at the top right of the window you're in, closing when you click into another one, like the popup.
+            </p>
+          </div>
+          <Key shortcut={shortcuts[OPEN_COMMAND]} />
+        </div>
+        <Button variant="outline" className="self-start" onClick={() => void browser.tabs.create({ url: 'chrome://extensions/shortcuts' })}>
           Open extension shortcuts
         </Button>
       </CardContent>

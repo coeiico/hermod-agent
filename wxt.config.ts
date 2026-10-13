@@ -30,9 +30,17 @@ export default defineConfig({
       default_title: 'Hermod Agent',
     },
     commands: {
-      'open-prompt': {
+      // Two shortcuts; the user keeps whichever suits their browser. The
+      // browser's own popup command, and Hermod's quick window, which always
+      // opens over the window in use (Vivaldi can open the popup in another
+      // window; see lib/detached-window.ts).
+      _execute_action: {
         suggested_key: { default: 'Alt+Space' },
-        description: 'Open the Hermod prompt',
+        description: 'Open the Hermod popup',
+      },
+      'open-prompt': {
+        suggested_key: { default: 'Alt+Shift+Space' },
+        description: 'Open the Hermod prompt over the window in use',
       },
     },
   },

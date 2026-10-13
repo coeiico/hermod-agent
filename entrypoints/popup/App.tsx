@@ -21,7 +21,7 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { EFFORT_OPTIONS, MODELS } from '@/ai/models';
-import { isDetachedPage } from '@/lib/detached-window';
+import { isDetachedPage, isQuickPage } from '@/lib/detached-window';
 import { canResume, type RunUsage, type ThreadActivity } from '@/lib/run';
 import { getKeyStatus, rpc, type KeyStatus } from '@/lib/rpc';
 import { APPROVAL_MODE_OPTIONS, DEFAULT_SETTINGS, getSettings, onSettingsChanged, updateSettings, type Settings } from '@/lib/settings';
@@ -43,6 +43,8 @@ import { useCallback, useEffect, useState } from 'react';
 
 // The popped-out window fills itself; the toolbar popup has a fixed size.
 const DETACHED = isDetachedPage();
+// The shortcut's window, which closes when it loses focus: it offers Pop out, like the toolbar popup.
+const QUICK = isQuickPage();
 
 const MODEL_OPTIONS = MODELS.map((m) => ({ value: m.id, label: m.name.replace('Claude ', ''), description: m.description }));
 const EFFORT_MENU_OPTIONS = EFFORT_OPTIONS.map((o) => ({ ...o, label: `${o.label} effort` }));
@@ -182,6 +184,16 @@ export default function App() {
 
   const refreshKeyStatus = useCallback(() => void getKeyStatus().then(setKeyStatus), []);
 
+  // Escape closes the quick window, as it does the toolbar popup (unless a dialog has it).
+  useEffect(() => {
+    if (!QUICK) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !e.defaultPrevented && !document.querySelector('[role="dialog"]')) window.close();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   useEffect(() => {
     void getSettings().then(setSettings);
     refreshKeyStatus();
@@ -241,7 +253,7 @@ export default function App() {
                 {keyStatus.unlocked ? <LockOpenIcon /> : <LockIcon />}
               </HeaderButton>
             )}
-            {DETACHED ? (
+            {DETACHED && !QUICK ? (
               <HeaderButton label="Reattach to the toolbar" onClick={() => void rpc({ type: 'reattach' })}>
                 <SquareArrowDownLeftIcon />
               </HeaderButton>
@@ -250,7 +262,8 @@ export default function App() {
                 label="Pop out into a window"
                 onClick={async () => {
                   const res = await rpc({ type: 'pop-out' });
-                  if (res.ok) window.close();
+                  // The quick window becomes the popped-out one in place; the toolbar popup closes.
+                  if (res.ok && !QUICK) window.close();
                 }}
               >
                 <SquareArrowOutUpRightIcon />
