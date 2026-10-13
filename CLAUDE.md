@@ -47,7 +47,7 @@ Hermod Agent is a Manifest V3 browser extension for Vivaldi (WXT + React + TypeS
 - `lib/` - the rest of the extension: the run state shared with the popup (`run.ts`, `run-controller.ts`, `use-run.ts`), settings, and the key vault.
 - `components/` - `ui/` (shadcn), `ai-elements/` (vendored AI Elements, edited: nothing may load from the network), `hermod/` (Hermod's own).
 
-Verify with `npm test` (unit tests), `npm run compile` (types) and `npm run build`.
+Verify with `npm test` (unit tests), `npm run compile` (types) and `npm run build`. `npm run e2e` builds, then drives the extension end to end in headless Chromium against a local test shop and a scripted fake Claude API (`e2e/`); it needs Playwright's Chromium (`npx playwright install chromium`) or `HERMOD_E2E_CHROME`.
 
 ## LLM Agent Overview
 

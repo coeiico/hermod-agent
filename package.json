@@ -10,7 +10,8 @@
     "zip": "wxt zip",
     "compile": "tsc --noEmit",
     "postinstall": "wxt prepare",
-    "test": "vitest run"
+    "test": "vitest run",
+    "e2e": "wxt build && node e2e/run.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.133.0",
