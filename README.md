@@ -1,5 +1,7 @@
 # Hermod Agent
 
+![Hermod — the Messenger](assets/brand/banner.png)
+
 A Manifest V3 extension for Vivaldi that turns plain-language requests ("move this tab to the window with my GitHub stuff") into browser actions, using Claude through the Messages API.
 
 ## Run it

@@ -501,9 +501,12 @@ export default function App() {
   return (
     <div className="min-h-screen bg-ground">
       <main className="mx-auto flex max-w-3xl flex-col gap-3 px-4 py-10">
-        <header className="mb-2">
-          <h1 className="font-display font-semibold text-4xl text-ink tracking-tight">Hermod Agent</h1>
-          <p className="mt-1 max-w-2xl text-[12px] text-ink-3 leading-4">Settings and API keys for the Hermod browser agent.</p>
+        <header className="mb-2 flex items-center gap-3">
+          <img src="/icon/128.png" alt="" width={56} height={56} className="size-14 shrink-0 rounded-xl" />
+          <div>
+            <h1 className="font-display font-semibold text-4xl text-ink tracking-tight">Hermod Agent</h1>
+            <p className="mt-1 max-w-2xl text-[12px] text-ink-3 leading-4">Settings and API keys for the Hermod browser agent.</p>
+          </div>
         </header>
 
         {status?.hasVault && status.usesDefaultPassphrase && (

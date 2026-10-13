@@ -10,6 +10,13 @@ export default defineConfig({
   manifest: {
     name: 'Hermod Agent',
     description: 'Plain-language browser commands for Vivaldi, powered by Claude.',
+    icons: {
+      16: 'icon/16.png',
+      32: 'icon/32.png',
+      48: 'icon/48.png',
+      96: 'icon/96.png',
+      128: 'icon/128.png',
+    },
     permissions: [
       'tabs',
       'storage',
@@ -28,6 +35,12 @@ export default defineConfig({
     host_permissions: ['https://api.anthropic.com/*', '<all_urls>'],
     action: {
       default_title: 'Hermod Agent',
+      default_icon: {
+        16: 'icon/16.png',
+        24: 'icon/24.png',
+        32: 'icon/32.png',
+        48: 'icon/48.png',
+      },
     },
     commands: {
       // Two shortcuts; the user keeps whichever suits their browser. The
