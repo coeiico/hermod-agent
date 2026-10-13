@@ -37,9 +37,18 @@
 - Use `./.agents/instructions/code-design.md` for how code itself is written: simplicity, function shape, abstraction discipline, data modeling, dependency direction, and error handling.
 - Use `./.agents/instructions/project-structure.md` for where code belongs.
 
+## Memory
+
+`.agents/memory/` is the project's memory for agents: what you would otherwise have to rediscover each session. Read the file that covers your task before starting, and keep it true as you work.
+
+- `.agents/memory/codebase-map.md` - where everything lives, one line per file or directory. Update it when you add, move or remove something a reader would look for.
+- `.agents/memory/decisions.md` - choices made on purpose and quirks of the project, with the reason for each. Read it before changing anything it covers.
+
+When you learn something a later agent would need and can't get from the code or git history (a decision and why it was made, a quirk, a workaround, a browser or API behaviour you had to discover), write it down here: add it to the file that fits, or start a new file with a short, plain name and list it above. Remove or correct entries that stop being true. Keep it for agents: user-facing documentation belongs in `README.md`.
+
 ## Project Overview
 
-Hermod Agent is a Manifest V3 browser extension for Vivaldi (WXT + React + TypeScript + Tailwind + shadcn/ui + AI Elements). The user types a plain-language command and a Claude agent carries it out with browser tools.
+Hermod Agent is a Chromium Manifest V3 browser extension (WXT + React + TypeScript + Tailwind + shadcn/ui + AI Elements). The user types a plain-language command and a Claude agent carries it out with browser tools.
 
 - `entrypoints/background.ts` - the service worker: owns the API key, runs agents, streams progress to the popup.
 - `entrypoints/popup/`, `entrypoints/options/` - the prompt window and the settings page. Interfaces only; no agent logic.

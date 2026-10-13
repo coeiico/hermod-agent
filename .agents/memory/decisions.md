@@ -1,0 +1,12 @@
+# Notes and decisions
+
+Choices made on purpose, and things about the project that aren't obvious from the code. Read it before changing anything it covers. Add an entry when you make a choice a later reader might undo by accident, or find a quirk they would trip over; change or remove an entry when it stops being true.
+
+- **Request shape:** `claude-haiku-5-5` by default (Sonnet 5.5 selectable), adaptive thinking with summarized display, effort `low` by default, `max_tokens` 8000 (thinking counts against it; 1024 risked cutting off tool calls). Tools have `eager_input_streaming`, so every tool input is validated with zod before running.
+- **Caching:** an explicit breakpoint on the system block caches tools + system, and top-level automatic caching covers the snapshot so round 2 of a command reads it from cache. Optional 1-hour TTL in Settings. The tool order in `ai/tools/catalog.ts` is part of the cached prefix: append, never reorder.
+- **Page access:** `<all_urls>` is requested up front. Optional per-site permissions would need a permission prompt from the popup on first `get_page_text` for each site (the worker can't show one), which works against convenience. Revisit before any store release.
+- **Browsers:** Hermod is a Chromium Manifest V3 extension, not a Vivaldi one. It is used day to day in Vivaldi and the end-to-end suite runs in Chromium. Vivaldi-specific handling stays, but must not break other Chromium browsers.
+- **Web panels:** Vivaldi reports web panels as tabs. Tabs whose `vivExtData` has a `panelId` are hidden from the snapshot and rejected by every tool. Check this against your Vivaldi version.
+- **Quick window:** Vivaldi can open the toolbar popup in another window, so the `open-prompt` shortcut opens Hermod in a window of its own over the window in use (`lib/detached-window.ts`).
+- **Design:** the UI follows the [Baritone design system](https://claude.ai/artifact/2y3oeBNsQtCBxy5mn13dKb): warm neutrals, `surface` islands on a `ground` page, one clay accent, Inter for the interface and Petrona for titles. Fonts are bundled through Fontsource, so nothing loads from Google at runtime. The `components/ui` primitives carry its recipes, so prefer tokens (`ink-2`, `line`, `sage-ink`) and the control heights (`h-[var(--control-h)]`) over raw Tailwind colours and ad-hoc `h-*`.
+- **Testing:** `.env` (git-ignored) is only for local testing; the extension never reads it.

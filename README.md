@@ -2,45 +2,82 @@
 
 ![Hermod — the Messenger](assets/brand/banner.png)
 
-A Manifest V3 extension for Vivaldi that turns plain-language requests ("move this tab to the window with my GitHub stuff") into browser actions, using Claude through the Messages API.
+Tell your browser what you want in plain language, and Hermod does it.
 
-## Run it
+Hermod is a Manifest V3 extension for Chromium browsers (Chrome, Edge, Brave, Vivaldi, Opera and others). Type a command into its prompt, and a Claude agent carries it out with your tabs, windows, bookmarks, history and downloads, or works through a website for you in a window of its own.
+
+## What it can do
+
+- **Tabs and windows.** "Move this tab to the window with my GitHub stuff." "Close all YouTube tabs." "Put this window on the left screen, maximised." "Sort these tabs by site." "Copy these tabs as a Markdown list."
+- **Your library.** "Bookmark these three tabs into a Research folder." "Reopen the window I just closed." "Delete today's history from example.com." "Pause my downloads."
+- **Reading pages.** "Which of these tabs mentions pricing?" "List the links on this page." "What font is the heading on this page?"
+- **Work inside websites.** "Find a USB-C hub under $40 on this shop and add it to my cart." Hermod hands this to a web task, which works in its own window while you keep browsing. You can watch it, steer it with a follow-up message, or stop it.
+
+Commands come in threads, so a follow-up like "close those" or "undo that" knows what you mean. Threads are saved, and you can come back to one later.
+
+## Install
+
+Hermod isn't in an extension store yet; build it from source. You need [Node.js](https://nodejs.org/) 22 or later.
 
 ```bash
+git clone https://github.com/coeiico/hermod-agent.git
+cd hermod-agent
 npm install
 npm run build
 ```
 
-Then in Vivaldi: `vivaldi://extensions` → Developer mode on → **Load unpacked** → pick `.output/chrome-mv3`.
+Then load it into your browser:
 
-For development, `npm run dev` rebuilds on change; reload the extension in `vivaldi://extensions` to pick up worker changes. `npm test` runs the unit tests.
+1. Open the extensions page (`chrome://extensions`, `edge://extensions`, `vivaldi://extensions`, ...).
+2. Turn on **Developer mode**.
+3. Click **Load unpacked** and pick the `.output/chrome-mv3` folder.
 
-How agents are structured, and how to add one: [.agents/instructions/hermod-agents-overview.md](.agents/instructions/hermod-agents-overview.md).
+## Set up
 
-First use: click the toolbar icon (or press **Alt+Space**), open **Settings**, paste a Claude Console API key, keep or change the passphrase (default `dank memes`), and **Save key**.
+Hermod uses your own [Claude Console](https://console.anthropic.com/) API key. That is pay-as-you-go API billing, separate from a Claude Pro or Max subscription.
 
-## Layout
+1. Click the Hermod icon in the toolbar (or press **Alt+Space**) and open **Settings**.
+2. Paste your API key.
+3. Keep the default passphrase (`dank memes`) or choose your own, and click **Save key**.
 
-| Path | What it is |
+The key is encrypted with your passphrase and stored only in this browser. After the browser restarts, Hermod asks for the passphrase once to unlock it again.
+
+## Use it
+
+Open the prompt and type a command:
+
+- **Alt+Space** opens the toolbar popup.
+- **Alt+Shift+Space** opens Hermod over the window you're using.
+
+If a shortcut clashes with your system or browser, change it on your browser's extension shortcuts page (`chrome://extensions/shortcuts`).
+
+**Choose how much it asks.** The mode below the prompt decides when Hermod checks with you first:
+
+| Mode | What it does |
 | --- | --- |
-| `entrypoints/background.ts` | Service worker: owns the key, runs commands, streams progress to the popup |
-| `entrypoints/popup/` | Prompt window (AI Elements chat UI) |
-| `entrypoints/options/` | Settings / Manage keys page |
-| `ai/runtime/` | The agent engine: run loop, tool execution and confirmations, run context and limits, Anthropic provider |
-| `ai/agents/interactive/browser_command/` | The command agent: `config.yaml`, `system.md`, `instructions.md`, `task.md`, `agent.ts` |
-| `ai/agents/_template/` | Starting point for a new agent; its `config.yaml` documents every option |
-| `ai/tools/` | Browser tools grouped by what they act on, the snapshot builder, and the fixed-order catalog |
-| `lib/threads.ts` | Saved threads in `storage.local`, and the earlier commands each new command is given as context |
-| `lib/run.ts`, `lib/run-controller.ts` | UI run state shared by worker and popup, and the adapter from runtime events to it |
-| `lib/vault.ts`, `lib/keystore.ts` | PBKDF2 + AES-GCM key vault; decrypted key only in `storage.session` |
-| `components/ai-elements/` | Vendored AI Elements (edited: no remote logos, JSON-only Shiki, no Streamdown plugins) |
-| `assets/tailwind.css` | Theme: the Baritone design language (tokens, type and control scale, both themes) |
+| Ask first | Asks before every change. |
+| Auto (default) | Asks before risky changes. |
+| Don't ask | Asks only before what can't be undone. |
 
-## Notes and decisions
+**Choose a model.** Claude Haiku 5.5 is the default: fast and cheap, and right for clear commands. Switch to Claude Sonnet 5.5 for fuzzy or many-step requests. Each command shows what it cost.
 
-- **Request shape:** `claude-haiku-5-5` by default (Sonnet 5.5 selectable), adaptive thinking with summarized display, effort `low` by default, `max_tokens` 8000 (thinking counts against it; 1024 risked cutting off tool calls). Tools have `eager_input_streaming`, so every tool input is validated with zod before running.
-- **Caching:** an explicit breakpoint on the system block caches tools + system (~7.3K tokens), and top-level automatic caching covers the snapshot so round 2 of a command reads it from cache. Optional 1-hour TTL in Settings.
-- **Page access:** `<all_urls>` is requested up front. Optional per-site permissions would need a permission prompt from the popup on first `get_page_text` for each site (the worker can't show one), which works against convenience. Revisit before any store release.
-- **Web panels:** tabs whose `vivExtData` has a `panelId` are hidden from the snapshot and rejected by every tool. Check this against your Vivaldi version.
-- **Design:** the UI follows the [Baritone design system](https://claude.ai/artifact/2y3oeBNsQtCBxy5mn13dKb): warm neutrals, `surface` islands on a `ground` page, one clay accent, Inter for the interface and Petrona for titles. Fonts are bundled through Fontsource, so nothing loads from Google at runtime. The `components/ui` primitives carry its recipes, so prefer tokens (`ink-2`, `line`, `sage-ink`) and the control heights (`h-[var(--control-h)]`) over raw Tailwind colours and ad-hoc `h-*`.
-- **Testing:** `.env` (git-ignored) is only for local testing; the extension never reads it.
+## Privacy
+
+- Hermod talks only to the Claude API (`api.anthropic.com`), with your key. There is no Hermod server, account or analytics.
+- Each command sends Claude a summary of your open windows and tabs (titles and addresses), plus whatever the command needs: page text when you ask about a page, a screenshot when you ask how something looks.
+- Hermod has access to all sites so it can read a page when you ask. It reads pages only for a command, never in the background. Browser-internal pages and extension stores can't be read.
+- Your key, settings and threads stay in this browser.
+- A web page can contain text written to steer an AI agent. Hermod's guardrails refuse or always ask about risky actions inside pages, but in **Don't ask** mode a page could still steer its ordinary clicks. Use **Auto** or **Ask first** on sites you don't trust.
+
+## Development
+
+```bash
+npm run dev      # rebuild on change; reload the extension to pick up worker changes
+npm test         # unit tests
+npm run compile  # type check
+npm run e2e      # end-to-end run in headless Chromium against a local test shop
+```
+
+`npm run e2e` needs Playwright's Chromium (`npx playwright install chromium`) or a browser path in `HERMOD_E2E_CHROME`. It answers with a scripted fake Claude API, so it spends no API credit.
+
+Contributor and agent notes live in [CLAUDE.md](CLAUDE.md) and [.agents/](.agents/): how agents are built is in [.agents/instructions/hermod-agents-overview.md](.agents/instructions/hermod-agents-overview.md), and where everything lives is in [.agents/memory/codebase-map.md](.agents/memory/codebase-map.md).
