@@ -19,6 +19,7 @@ import { Separator } from '@/components/ui/separator';
 import { EFFORT_OPTIONS, MODELS } from '@/ai/models';
 import type { CacheTtl, Effort } from '@/ai/runtime/definition';
 import { getKeyStatus, rpc, type KeyStatus } from '@/lib/rpc';
+import { OPEN_COMMAND } from '@/lib/detached-window';
 import { APPROVAL_MODE_OPTIONS, DEFAULT_SETTINGS, getSettings, onSettingsChanged, updateSettings, type Settings } from '@/lib/settings';
 import { DEFAULT_PASSPHRASE } from '@/lib/vault';
 import { AlertTriangleIcon, CheckCircle2Icon, KeyRoundIcon, LockIcon, LockOpenIcon, XCircleIcon } from 'lucide-react';
@@ -329,7 +330,7 @@ function ShortcutCard() {
   const [shortcut, setShortcut] = useState<string | null>(null);
   useEffect(() => {
     void browser.commands.getAll().then((cmds) => {
-      setShortcut(cmds.find((c) => c.name === '_execute_action')?.shortcut || '');
+      setShortcut(cmds.find((c) => c.name === OPEN_COMMAND)?.shortcut || '');
     });
   }, []);
   return (

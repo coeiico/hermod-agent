@@ -30,7 +30,7 @@ export default defineConfig({
       default_title: 'Hermod Agent',
     },
     commands: {
-      _execute_action: {
+      'open-prompt': {
         suggested_key: { default: 'Alt+Space' },
         description: 'Open the Hermod prompt',
       },
