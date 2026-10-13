@@ -7,11 +7,13 @@ import type { Model } from '@/ai/runtime/model';
 import { streamRun } from '@/ai/runtime/runner';
 import { BROWSER_TOOLS } from '@/ai/tools/catalog';
 import configYaml from './config.yaml?raw';
+import { DELEGATION_TOOLS } from './delegation';
 import instructions from './instructions.md?raw';
 import system from './system.md?raw';
 import task from './task.md?raw';
 
-export const browserCommandAgent = defineAgent({ configYaml, system, instructions, task, tools: BROWSER_TOOLS });
+// The delegation tools come after the browser tools, so the cached prefix only grows at its end.
+export const browserCommandAgent = defineAgent({ configYaml, system, instructions, task, tools: [...BROWSER_TOOLS, ...DELEGATION_TOOLS] });
 
 /** How many earlier turns the model sees; older ones stay visible in the UI only. */
 export const MAX_EARLIER_TURNS = 10;
@@ -34,6 +36,8 @@ export interface EarlierTurn {
     /** The tool's result or error text. */
     result?: string;
   }[];
+  /** What the user sent while the command ran, oldest first. */
+  steering?: string[];
   answer?: string;
   error?: string;
 }
@@ -68,6 +72,7 @@ export function formatEarlierTurns(turns: readonly EarlierTurn[]): string {
   const skipped = turns.length - shown.length;
   const blocks = shown.map((turn, i) => {
     const lines = [`<turn number="${skipped + i + 1}" time="${time(turn.startedAt)}">`, `<command>${commandLine(turn.command, turn.resumed)}</command>`];
+    for (const message of turn.steering ?? []) lines.push(`<steering>${message}</steering>`);
     if (turn.actions.length) {
       lines.push('<actions>');
       for (const action of turn.actions) {

@@ -28,8 +28,17 @@ export const DEFAULT_SETTINGS: Settings = {
 
 export const APPROVAL_MODE_OPTIONS: { value: ApprovalMode; label: string; description: string }[] = [
   { value: 'ask', label: 'Ask first', description: 'Asks before every change it makes to your browser.' },
-  { value: 'auto', label: 'Auto', description: 'Makes changes, and asks before risky ones, like closing a window or many tabs.' },
-  { value: 'never', label: "Don't ask", description: "Just does it. Still asks before anything that can't be undone, like deleting bookmarks or history." },
+  {
+    value: 'auto',
+    label: 'Auto',
+    description: 'Makes changes, and asks before risky ones, like closing a window or many tabs, or submitting a form on a website.',
+  },
+  {
+    value: 'never',
+    label: "Don't ask",
+    description:
+      "Just does it. Still asks before anything that can't be undone, like deleting history or sending, posting or deleting on a website. A page could steer its ordinary clicks in this mode.",
+  },
 ];
 
 const KEY = 'settings';

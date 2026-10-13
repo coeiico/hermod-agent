@@ -32,9 +32,16 @@ export function addUsage(a: Usage, b: Usage): Usage {
   };
 }
 
+export interface ToolImage {
+  mediaType: 'image/jpeg' | 'image/png';
+  /** Base64, without a data: prefix. */
+  data: string;
+}
+
 /** One tool call's outcome, as the model will read it. */
 export type ToolResult =
-  | { status: 'ok'; output: string }
+  /** `pageView`: a view of a page (an outline or screenshot) that goes stale; older ones are trimmed from the run. */
+  | { status: 'ok'; output: string; image?: ToolImage; pageView?: boolean }
   | { status: 'declined'; output: string }
   | { status: 'error'; errorType: string; message: string };
 
@@ -70,4 +77,6 @@ export type RunEvent =
   | { type: 'response-completed'; turn: number; model: string; usage: Usage; stopReason: string | null; durationMs: number }
   | { type: 'tool-call-started'; callId: string; name: string; input: unknown }
   | { type: 'tool-call-finished'; callId: string; name: string; result: ToolResult }
+  /** Steering messages the model is about to read. */
+  | { type: 'steering-read'; ids: string[] }
   | { type: 'run-finished'; result: RunResult };

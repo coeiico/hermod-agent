@@ -3,6 +3,7 @@
 // (page text, history, bookmarks, downloads) is fetched through tools.
 import { z } from 'zod';
 import { defineTool } from '../runtime/tools';
+import { claimedWindow, claimOf } from './scope';
 
 export interface Snapshot {
   text: string;
@@ -92,6 +93,8 @@ function tabLine(tab: Tab, compact: boolean, now: number): string {
   if (tab.discarded) flags.push('discarded');
   if (tab.status === 'loading') flags.push('loading');
   if (!compact && tab.openerTabId !== undefined) flags.push(`opener=T${tab.openerTabId}`);
+  const claim = claimOf(tab);
+  if (claim && claimedWindow(tab.windowId) !== claim) flags.push(`[in use by web task ${claim.label}]`);
 
   const title = quote(tab.title, compact ? 40 : 80);
   const url = shortUrl(tab.pendingUrl ?? tab.url, compact ? 60 : 120);
@@ -105,6 +108,8 @@ function windowLine(win: Window, tabCount: number): string {
   parts.push(win.state ?? 'normal');
   if (win.type && win.type !== 'normal') parts.push(`type=${win.type}`);
   if (win.incognito) parts.push('incognito');
+  const claim = win.id === undefined ? undefined : claimedWindow(win.id);
+  if (claim) parts.push(`[web task ${claim.label}'s window]`);
   parts.push(formatBounds(win));
   parts.push(`(${tabCount} tab${tabCount === 1 ? '' : 's'})`);
   return parts.join(' ');

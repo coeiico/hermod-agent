@@ -42,13 +42,48 @@ export interface RunState {
   status: RunStatus;
   error?: string;
   summary?: string;
+  /** A web task stopped at a step only the user can take. */
+  needsUser?: boolean;
   snapshot?: SnapshotInfo;
   /** Carries on the thread's previous command, which was stopped, interrupted or failed. */
   resumed?: boolean;
-  /** [user command, assistant activity]. */
+  /** [user command, assistant activity]. Steers sent into the run are `data-steer` parts of the activity. */
   messages: UIMessage[];
   usage: RunUsage;
+  /** Web tasks this command started, by the ID of the tool call that started each. */
+  tasks?: Record<string, RunState>;
 }
+
+/** `sent`: waiting for the agent; `read`: the agent has it; `queued`: it came too late and runs as the next command. */
+export type SteerState = 'sent' | 'read' | 'queued';
+
+export interface SteerData {
+  text: string;
+  state: SteerState;
+}
+
+type Part = UIMessage['parts'][number];
+
+export function steerOf(part: Part): SteerData | undefined {
+  return part.type === 'data-steer' ? (part.data as SteerData) : undefined;
+}
+
+/** A message sent to a thread while its command ran, waiting to run next. */
+export interface QueuedCommand {
+  id: string;
+  text: string;
+  queuedAt: number;
+  /** Carries on the thread's last command (a resume) instead of starting a new one. */
+  resume?: boolean;
+  /** Held after the worker restarted, until the user runs it. */
+  paused?: boolean;
+}
+
+/**
+ * What a thread is doing, for the dots on the thread list and toolbar icon:
+ * working, waiting on a confirmation, or finished since the user last opened it.
+ */
+export type ThreadActivity = 'running' | 'waiting' | 'done' | 'failed';
 
 export type RunUpdate =
   | { type: 'snapshot'; snapshot: SnapshotInfo }
@@ -65,15 +100,26 @@ export type RunUpdate =
   | { type: 'tool-output'; toolCallId: string; output: string }
   | { type: 'tool-error'; toolCallId: string; errorText: string }
   | { type: 'usage'; usage: RunUsage }
-  | { type: 'run-end'; status: RunStatus; summary?: string; error?: string };
+  | { type: 'run-end'; status: RunStatus; summary?: string; error?: string; needsUser?: boolean }
+  | { type: 'steer'; id: string; text: string }
+  | { type: 'steer-state'; ids: string[]; state: SteerState }
+  | { type: 'task-start'; task: string; run: RunState }
+  | { type: 'task-update'; task: string; update: RunUpdate };
 
 // Popup -> worker, over the long-lived port.
 export type PortRequest =
+  /** Runs in the open thread, or queues while its command runs. */
   | { type: 'run'; command: string }
   /** Carries on the open thread's last command when it was stopped, interrupted or failed. */
   | { type: 'resume' }
   | { type: 'approve'; approvalId: string; approved: boolean }
+  /** Stops the open thread's command. */
   | { type: 'stop' }
+  /** Sends a queued message of the open thread into its running command. */
+  | { type: 'steer'; queuedId: string }
+  | { type: 'unqueue'; queuedId: string }
+  /** Runs a queued message that was held after a restart. */
+  | { type: 'run-queued'; queuedId: string }
   | { type: 'open-thread'; threadId: string }
   | { type: 'new-thread' }
   | { type: 'delete-thread'; threadId: string };
@@ -81,11 +127,11 @@ export type PortRequest =
 // Worker -> popup, over the long-lived port.
 export type PortMessage =
   /**
-   * The open thread's finished turns, and its command in progress (if any).
-   * Null thread: a new, empty one. `runningThreadId`: the thread whose command
-   * is running, which may not be the open one.
+   * The open thread's finished turns, its command in progress (if any) and its
+   * queue. Null thread: a new, empty one. `activity`: every thread that is
+   * running or has news, by ID.
    */
-  | { type: 'state'; thread: Thread | null; run: RunState | null; runningThreadId: string | null }
+  | { type: 'state'; thread: Thread | null; run: RunState | null; queue: QueuedCommand[]; activity: Record<string, ThreadActivity> }
   | { type: 'update'; runId: string; update: RunUpdate }
   | { type: 'needs-unlock' }
   | { type: 'error'; error: string };
@@ -112,8 +158,6 @@ export function newRun(id: string, command: string, model: string, resumed = fal
     usage: EMPTY_USAGE,
   };
 }
-
-type Part = UIMessage['parts'][number];
 
 function updateAssistant(run: RunState, update: (parts: Part[]) => Part[]): RunState {
   const [user, assistant] = run.messages;
@@ -235,6 +279,21 @@ export function applyUpdate(run: RunState, event: RunUpdate): RunState {
       }));
     case 'usage':
       return { ...run, usage: event.usage };
+    case 'steer':
+      return updateAssistant(run, (parts) => [...parts, { type: 'data-steer', id: event.id, data: { text: event.text, state: 'sent' } satisfies SteerData }]);
+    case 'steer-state':
+      return updateAssistant(run, (parts) =>
+        parts.map((p) => {
+          const steer = steerOf(p);
+          return steer && p.type === 'data-steer' && p.id && event.ids.includes(p.id) ? { ...p, data: { ...steer, state: event.state } } : p;
+        }),
+      );
+    case 'task-start':
+      return { ...run, tasks: { ...run.tasks, [event.task]: event.run } };
+    case 'task-update': {
+      const task = run.tasks?.[event.task];
+      return task ? { ...run, tasks: { ...run.tasks, [event.task]: applyUpdate(task, event.update) } } : run;
+    }
     case 'run-end':
       return {
         ...updateAssistant(run, (parts) =>
@@ -247,6 +306,7 @@ export function applyUpdate(run: RunState, event: RunUpdate): RunState {
         status: event.status,
         summary: event.summary,
         error: event.error,
+        ...(event.needsUser ? { needsUser: true } : {}),
         endedAt: Date.now(),
       };
   }

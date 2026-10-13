@@ -20,11 +20,24 @@ import { Shimmer } from '@/components/ai-elements/shimmer';
 import { Tool, ToolContent, ToolHeader, ToolInput, ToolOutput } from '@/components/ai-elements/tool';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { getModel } from '@/ai/models';
-import type { RunState } from '@/lib/run';
+import { steerOf, type RunState, type SteerData } from '@/lib/run';
+import { cn } from '@/lib/utils';
 import type { DynamicToolUIPart, UIMessage } from 'ai';
 import type { BundledLanguage } from 'shiki';
-import { AlertCircleIcon, CameraIcon, CheckIcon, CircleStopIcon, MonitorIcon, PlayIcon, XIcon } from 'lucide-react';
+import {
+  AlertCircleIcon,
+  CameraIcon,
+  CheckIcon,
+  ChevronDownIcon,
+  CircleStopIcon,
+  GlobeIcon,
+  MonitorIcon,
+  PlayIcon,
+  XIcon,
+} from 'lucide-react';
+import { useState } from 'react';
 
 function thinkingMessage(isStreaming: boolean, duration?: number) {
   if (isStreaming || duration === 0) return <Shimmer duration={1}>Thinking…</Shimmer>;
@@ -74,19 +87,93 @@ function ToolCall({ part, onApprove }: { part: DynamicToolUIPart; onApprove: (ap
   );
 }
 
+const STEER_STATE: Record<SteerData['state'], string> = {
+  sent: 'Sent. Hermod reads it at its next step.',
+  read: 'Read.',
+  queued: 'Arrived as the command finished, so it runs next.',
+};
+
+function SteerMessage({ steer }: { steer: SteerData }) {
+  return (
+    <div className="mb-3 flex flex-col items-end gap-1">
+      <Message from="user" className="ml-auto">
+        <MessageContent className="px-3 py-2">
+          <span className="block text-ink-3 text-xs">Steer</span>
+          {steer.text}
+        </MessageContent>
+      </Message>
+      <span className="text-ink-3 text-xs">{STEER_STATE[steer.state]}</span>
+    </div>
+  );
+}
+
+/** Whether a run, or a web task inside it, is waiting on an approval. */
+function awaitingApproval(run: RunState): boolean {
+  const parts = run.messages[1]?.parts ?? [];
+  return parts.some((p) => p.type === 'dynamic-tool' && p.state === 'approval-requested') || Object.values(run.tasks ?? {}).some(awaitingApproval);
+}
+
+function taskStatus(task: RunState): string {
+  if (task.status === 'running') return awaitingApproval(task) ? 'waiting for you' : 'working';
+  if (task.status === 'done') return task.needsUser ? 'needs you' : 'done';
+  if (task.status === 'error') return 'failed';
+  return task.status;
+}
+
+/** A web task's steps, nested under the call that started it; open while it works or waits on the user. */
+function WebTaskCard({ task, onApprove }: { task: RunState; onApprove: (approvalId: string, approved: boolean) => void }) {
+  const running = task.status === 'running';
+  const waiting = awaitingApproval(task);
+  const [open, setOpen] = useState(running);
+  const assistant = task.messages[1] ?? { id: 'empty', role: 'assistant' as const, parts: [] };
+  const steps = assistant.parts.filter((p) => p.type === 'dynamic-tool').length;
+  return (
+    <Collapsible
+      open={open || waiting}
+      onOpenChange={setOpen}
+      className={cn('mb-3 rounded-[10px] border border-line bg-surface-alt/40', waiting && 'border-amber/60')}
+    >
+      <CollapsibleTrigger className="group flex w-full items-center gap-2 px-3 py-2 text-left">
+        <GlobeIcon className="size-4 shrink-0 text-ink-3" />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-ink text-sm">{task.command}</span>
+          <span className="text-ink-3 text-xs">
+            Web task · {taskStatus(task)} · {steps} step{steps === 1 ? '' : 's'}
+          </span>
+        </span>
+        <ChevronDownIcon className="size-4 shrink-0 text-ink-3 transition-transform group-data-[state=open]:rotate-180" />
+      </CollapsibleTrigger>
+      <CollapsibleContent className="border-line border-t px-3 pt-3">
+        <AssistantParts message={assistant} running={running} onApprove={onApprove} />
+        {running && !waiting && <Shimmer duration={1.5}>Working in its own window…</Shimmer>}
+      </CollapsibleContent>
+      {!running && (task.summary || task.error) && (
+        <div className="border-line border-t px-3 py-2 text-sm">
+          <MessageResponse>{task.status === 'error' ? (task.error ?? '') : (task.summary ?? '')}</MessageResponse>
+        </div>
+      )}
+    </Collapsible>
+  );
+}
+
 function AssistantParts({
   message,
   running,
   onApprove,
+  tasks,
 }: {
   message: UIMessage;
   running: boolean;
   onApprove: (approvalId: string, approved: boolean) => void;
+  /** Web tasks by the ID of the tool call that started each. */
+  tasks?: RunState['tasks'];
 }) {
   return (
     <>
       {message.parts.map((part, i) => {
         const key = `${message.id}-${i}`;
+        const steer = steerOf(part);
+        if (steer) return <SteerMessage key={key} steer={steer} />;
         switch (part.type) {
           case 'reasoning': {
             const streaming = part.state === 'streaming';
@@ -105,8 +192,15 @@ function AssistantParts({
                 {part.text}
               </MessageResponse>
             );
-          case 'dynamic-tool':
-            return <ToolCall key={part.toolCallId} part={part} onApprove={onApprove} />;
+          case 'dynamic-tool': {
+            const task = tasks?.[part.toolCallId];
+            return (
+              <div key={part.toolCallId}>
+                <ToolCall part={part} onApprove={onApprove} />
+                {task && <WebTaskCard task={task} onApprove={onApprove} />}
+              </div>
+            );
+          }
           default:
             return null;
         }
@@ -128,7 +222,8 @@ export function RunView({
   const [userMessage, assistant] = run.messages;
   const running = run.status === 'running';
   const parts = assistant?.parts ?? [];
-  const awaitingApproval = parts.some((p) => p.type === 'dynamic-tool' && p.state === 'approval-requested');
+  const waiting = awaitingApproval(run);
+  const webTaskRunning = Object.values(run.tasks ?? {}).some((t) => t.status === 'running');
   const lastPart = parts.at(-1);
   const streamingSomething =
     lastPart && (lastPart.type === 'text' || lastPart.type === 'reasoning') && lastPart.state === 'streaming';
@@ -173,9 +268,14 @@ export function RunView({
             </ChainOfThought>
           )}
 
-          <AssistantParts message={assistant ?? { id: 'empty', role: 'assistant', parts: [] }} running={running} onApprove={onApprove} />
+          <AssistantParts
+            message={assistant ?? { id: 'empty', role: 'assistant', parts: [] }}
+            running={running}
+            onApprove={onApprove}
+            tasks={run.tasks}
+          />
 
-          {running && !streamingSomething && !awaitingApproval && (
+          {running && !streamingSomething && !waiting && !webTaskRunning && (
             <Shimmer duration={1.5}>
               {run.snapshot ? 'Working…' : 'Reading your browser…'}
             </Shimmer>

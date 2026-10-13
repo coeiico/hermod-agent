@@ -50,6 +50,38 @@ describe('thread store', () => {
   });
 });
 
+describe('thread store writes', () => {
+  it('keeps both turns when two commands finish at once', async () => {
+    const a = await threads.createThread('a');
+    const b = await threads.createThread('b');
+    await Promise.all([threads.appendTurn(a.id, finishedRun('one')), threads.appendTurn(b.id, finishedRun('two'))]);
+    const list = await threads.listThreads();
+    expect(list.map((t) => t.turnCount).sort()).toEqual([1, 1]);
+    expect(list.every((t) => t.lastStatus === 'done' && t.lastEndedAt)).toBe(true);
+  });
+
+  it('clears the threads it is not told to keep, and the open thread with them', async () => {
+    const keep = await threads.createThread('keep me');
+    const drop = await threads.createThread('drop me');
+    await threads.setActiveThreadId(drop.id);
+    const cleared = await threads.clearThreads((t) => t.id === keep.id);
+    expect(cleared).toEqual([drop.id]);
+    expect((await threads.listThreads()).map((t) => t.id)).toEqual([keep.id]);
+    expect(await threads.getThread(drop.id)).toBeUndefined();
+    expect(await threads.getActiveThreadId()).toBeNull();
+  });
+
+  it('marks a thread viewed after its command ends', async () => {
+    const t = await threads.createThread('a');
+    await threads.appendTurn(t.id, finishedRun('one'));
+    const [before] = await threads.listThreads();
+    await new Promise((r) => setTimeout(r, 2));
+    await threads.markViewed(t.id);
+    const [after] = await threads.listThreads();
+    expect(after!.lastViewedAt!).toBeGreaterThan(before!.lastEndedAt!);
+  });
+});
+
 describe('toEarlierTurn', () => {
   it('keeps each action with its outcome, and the answer', () => {
     expect(threads.toEarlierTurn(finishedRun('tidy up'))).toMatchObject({
@@ -61,5 +93,25 @@ describe('toEarlierTurn', () => {
       ],
       answer: 'Moved it; left the others open.',
     });
+  });
+
+  it("keeps the user's steers and a web task's ending", () => {
+    let run = newRun('r1', 'add this to my cart', 'claude-haiku-5-5');
+    const task = applyUpdate(newRun('k1', 'Add it', 'claude-sonnet-5-5'), { type: 'run-end', status: 'done', summary: 'Added it.' });
+    const steps: Parameters<typeof applyUpdate>[1][] = [
+      { type: 'tool-input-start', toolCallId: 't1', toolName: 'start_web_task', title: 'Start web task' },
+      { type: 'tool-input-available', toolCallId: 't1', input: { goal: 'Add it' } },
+      { type: 'task-start', task: 't1', run: newRun('k1', 'Add it', 'claude-sonnet-5-5') },
+      { type: 'task-update', task: 't1', update: { type: 'run-end', status: 'done', summary: 'Added it.' } },
+      { type: 'tool-output', toolCallId: 't1', output: 'Started web task K1.' },
+      { type: 'steer', id: 's1', text: 'make it two' },
+      { type: 'steer-state', ids: ['s1'], state: 'read' },
+      { type: 'run-end', status: 'done' },
+    ];
+    for (const step of steps) run = applyUpdate(run, step);
+    expect(run.tasks?.t1?.summary).toBe(task.summary);
+    const turn = threads.toEarlierTurn(run);
+    expect(turn.steering).toEqual(['make it two']);
+    expect(turn.actions[0]?.result).toBe('Started web task K1.\nThe web task finished: Added it.');
   });
 });

@@ -21,6 +21,7 @@ import type { CacheTtl, Effort } from '@/ai/runtime/definition';
 import { getKeyStatus, rpc, type KeyStatus } from '@/lib/rpc';
 import { OPEN_COMMAND } from '@/lib/detached-window';
 import { APPROVAL_MODE_OPTIONS, DEFAULT_SETTINGS, getSettings, onSettingsChanged, updateSettings, type Settings } from '@/lib/settings';
+import type { ThreadSummary } from '@/lib/threads';
 import { DEFAULT_PASSPHRASE } from '@/lib/vault';
 import { AlertTriangleIcon, CheckCircle2Icon, KeyRoundIcon, LockIcon, LockOpenIcon, XCircleIcon } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
@@ -357,6 +358,100 @@ function ShortcutCard() {
   );
 }
 
+function ClearThreads({
+  which,
+  count,
+  onCleared,
+}: {
+  which: 'all' | 'stale';
+  /** How many threads this would clear. */
+  count: number;
+  onCleared: (feedback: Feedback) => void;
+}) {
+  const all = which === 'all';
+  const title = all ? 'Clear all threads' : 'Clear stale threads';
+  const what = `${count} thread${count === 1 ? '' : 's'}`;
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <div>
+        <h3 className="font-medium text-base">{title}</h3>
+        <p className="text-ink-3 text-xs">
+          {all ? 'Deletes every saved thread.' : "Deletes every thread not started today, so only today's are kept."}
+        </p>
+      </div>
+      <Dialog>
+        <DialogTrigger asChild>
+          <Button variant={all ? 'destructive' : 'outline'} disabled={count === 0}>
+            {title}
+          </Button>
+        </DialogTrigger>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete {what}?</DialogTitle>
+            <DialogDescription>
+              {all ? 'Every saved thread' : "Every thread from before today"} is deleted for good. A thread with a command still running is kept.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="outline">Cancel</Button>
+            </DialogClose>
+            <DialogClose asChild>
+              <Button
+                variant="destructive"
+                onClick={async () => {
+                  const res = await rpc({ type: 'clear-threads', which }).catch((err: unknown) => ({ ok: false as const, error: String(err) }));
+                  if (!res.ok) return onCleared({ ok: false, text: `Couldn't clear threads: ${res.error}` });
+                  const cleared = res.cleared ?? 0;
+                  const kept = res.keptRunning ? ` Kept ${res.keptRunning} with a command running.` : '';
+                  onCleared({ ok: true, text: `Deleted ${cleared} thread${cleared === 1 ? '' : 's'}.${kept}` });
+                }}
+              >
+                Delete
+              </Button>
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function ThreadsCard() {
+  const [threads, setThreads] = useState<ThreadSummary[] | null>(null);
+  const [feedback, setFeedback] = useState<Feedback>(null);
+
+  const load = useCallback(() => {
+    void rpc({ type: 'list-threads' }).then((res) => setThreads(res.ok ? (res.threads ?? []) : []));
+  }, []);
+  useEffect(load, [load]);
+
+  const startOfToday = new Date().setHours(0, 0, 0, 0);
+  const stale = threads?.filter((t) => t.createdAt < startOfToday).length ?? 0;
+  const onCleared = (result: Feedback) => {
+    setFeedback(result);
+    load();
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Threads</CardTitle>
+        <CardDescription>
+          Threads are saved in this browser.{' '}
+          {threads && `You have ${threads.length} thread${threads.length === 1 ? '' : 's'}, ${stale} from before today.`}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-5">
+        <ClearThreads which="stale" count={stale} onCleared={onCleared} />
+        <Separator />
+        <ClearThreads which="all" count={threads?.length ?? 0} onCleared={onCleared} />
+        <FeedbackLine feedback={feedback} />
+      </CardContent>
+    </Card>
+  );
+}
+
 function PageAccessCard() {
   return (
     <Card>
@@ -415,6 +510,7 @@ export default function App() {
         <ModeCard settings={settings} />
         <ModelCard settings={settings} />
         <ShortcutCard />
+        <ThreadsCard />
         <PageAccessCard />
       </main>
     </div>

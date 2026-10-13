@@ -1,7 +1,7 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import { createRunContext, RunCancelled, type ApprovalMode, type Limits } from './context';
+import { createRunContext, RunCancelled, SteeringInbox, type ApprovalMode, type Limits } from './context';
 import { defineAgent } from './definition';
 import { ZERO_USAGE, type ModelEvent, type RunEvent } from './events';
 import type { Model, ModelRequest, ModelResponse } from './model';
@@ -98,16 +98,43 @@ const hang = defineTool({
   run: () => new Promise<string>(() => {}),
 });
 
+const look = defineTool({
+  name: 'look',
+  title: 'Look',
+  effect: 'read',
+  description: 'Look at the page.',
+  input: z.object({ n: z.number() }),
+  run: async ({ n }) => ({ text: `view ${n}`, image: { mediaType: 'image/png' as const, data: 'AAAA' }, pageView: true }),
+});
+
+const pressRun = vi.fn(async () => 'pressed');
+
+const press = defineTool({
+  name: 'press',
+  title: 'Press',
+  effect: 'write',
+  description: 'Press a button.',
+  input: z.object({ level: z.enum(['ask', 'auto', 'always']) }),
+  confirm: ({ level }) => ({ question: `Press (${level})?`, when: level }),
+  run: pressRun,
+});
+
 const agent = defineAgent({
   configYaml: 'id: test_agent.v1\nmodel: claude-test\neffort: low\nmax_tokens: 1000',
   system: '# Behavior\n\nBe helpful.',
   instructions: '# Role\n\nTester.\n\n# Objective\n\nTest.',
   task: '# Task\n\n{{ command }}',
-  tools: [move, remove, purge, slow, hang],
+  tools: [move, remove, purge, slow, hang, look, press],
 });
 
 function context(
-  options: { approval?: ApprovalMode; confirm?: (q: string) => boolean; limits?: Partial<Limits>; cancel?: AbortController } = {},
+  options: {
+    approval?: ApprovalMode;
+    confirm?: (q: string) => boolean;
+    limits?: Partial<Limits>;
+    cancel?: AbortController;
+    steering?: SteeringInbox;
+  } = {},
 ) {
   const cancel = options.cancel ?? new AbortController();
   return createRunContext({
@@ -115,6 +142,7 @@ function context(
     approval: options.approval ?? 'auto',
     confirm: async (req) => options.confirm?.(req.question) ?? false,
     limits: options.limits,
+    steering: options.steering,
   });
 }
 
@@ -267,6 +295,87 @@ describe('streamRun', () => {
       })(),
     );
     await expect(run).rejects.toBeInstanceOf(RunCancelled);
+  });
+
+  it('asks per call by the level its confirm gives', async () => {
+    const asked = async (approval: ApprovalMode) => {
+      const questions: string[] = [];
+      const model = new ScriptedModel([
+        () =>
+          message(
+            [toolUse('t1', 'press', { level: 'ask' }), toolUse('t2', 'press', { level: 'auto' }), toolUse('t3', 'press', { level: 'always' })],
+            'tool_use',
+          ),
+        () => message([text('Done.')], 'end_turn'),
+      ]);
+      await collect(streamRun(agent, context({ approval, confirm: (q) => (questions.push(q), true) }), { model, variables: { command: 'x' } }));
+      return questions;
+    };
+    expect(await asked('ask')).toEqual(['Press (ask)?', 'Press (auto)?', 'Press (always)?']);
+    expect(await asked('auto')).toEqual(['Press (auto)?', 'Press (always)?']);
+    expect(await asked('never')).toEqual(['Press (always)?']);
+  });
+
+  it('sends an image result as text and image blocks', async () => {
+    const model = new ScriptedModel([
+      () => message([toolUse('t1', 'look', { n: 1 })], 'tool_use'),
+      () => message([text('Seen.')], 'end_turn'),
+    ]);
+    await collect(streamRun(agent, context(), { model, variables: { command: 'x' } }));
+    const [result] = model.requests[1]!.messages[2]!.content as Anthropic.ToolResultBlockParam[];
+    expect(result!.content).toEqual([
+      { type: 'text', text: 'view 1' },
+      { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'AAAA' } },
+    ]);
+  });
+
+  it('trims older page views in batches, keeping the newest two', async () => {
+    const script = Array.from({ length: 6 }, (_, i) => () => message([toolUse(`t${i + 1}`, 'look', { n: i + 1 })], 'tool_use'));
+    const model = new ScriptedModel([...script, () => message([text('Done.')], 'end_turn')]);
+    await collect(streamRun(agent, context({ limits: { maxTurns: 10 } }), { model, variables: { command: 'x' } }));
+
+    const views = (req: ModelRequest) =>
+      req.messages
+        .filter((m) => m.role === 'user' && Array.isArray(m.content))
+        .map((m) => {
+          const content = (m.content as Anthropic.ToolResultBlockParam[])[0]!.content;
+          return typeof content === 'string' ? 'trimmed' : (content as Anthropic.TextBlockParam[])[0]!.text;
+        });
+    // Four page views: nothing trimmed yet.
+    expect(views(model.requests[4]!)).toEqual(['view 1', 'view 2', 'view 3', 'view 4']);
+    // The fifth triggers a trim down to the newest two, which then grows again.
+    expect(views(model.requests[5]!)).toEqual(['trimmed', 'trimmed', 'trimmed', 'view 4', 'view 5']);
+    expect(views(model.requests[6]!)).toEqual(['trimmed', 'trimmed', 'trimmed', 'view 4', 'view 5', 'view 6']);
+  });
+
+  it('adds a steer after the next tool results', async () => {
+    const steering = new SteeringInbox();
+    const model = new ScriptedModel([
+      () => {
+        steering.push({ id: 's1', text: 'Also do 3.' });
+        return message([toolUse('t1', 'move', { ids: [1] })], 'tool_use');
+      },
+      () => message([text('Done.')], 'end_turn'),
+    ]);
+    const events = await collect(streamRun(agent, context({ steering }), { model, variables: { command: 'x' } }));
+    const content = model.requests[1]!.messages[2]!.content as Anthropic.ContentBlockParam[];
+    expect(content.map((b) => b.type)).toEqual(['tool_result', 'text']);
+    expect(content[1]).toEqual({ type: 'text', text: '<steering>\nAlso do 3.\n</steering>' });
+    expect(events).toContainEqual({ type: 'steering-read', ids: ['s1'] });
+  });
+
+  it('carries on instead of ending when a steer arrives with the answer', async () => {
+    const steering = new SteeringInbox();
+    const model = new ScriptedModel([
+      () => {
+        steering.push({ id: 's1', text: 'Wait, one more.' });
+        return message([text('All done.')], 'end_turn');
+      },
+      () => message([text('Did the one more too.')], 'end_turn'),
+    ]);
+    const events = await collect(streamRun(agent, context({ steering }), { model, variables: { command: 'x' } }));
+    expect(model.requests[1]!.messages.map((m) => m.role)).toEqual(['user', 'assistant', 'user']);
+    expect(events.at(-1)).toMatchObject({ type: 'run-finished', result: { text: 'Did the one more too.' } });
   });
 
   it('fails the render when task.md names a variable that was not given', async () => {

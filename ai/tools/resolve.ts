@@ -2,6 +2,7 @@
 // the trust boundary for tool input: an ID that doesn't exist, or names a
 // Vivaldi web panel, is refused here with an error the model can act on.
 import { z } from 'zod';
+import { claimedWindow, claimOf } from './scope';
 import { isHermodTab, isPanelTab } from './snapshot';
 
 export type Tab = Browser.tabs.Tab;
@@ -28,6 +29,12 @@ export async function getTabs(ids: number[]): Promise<Tab[]> {
   }
   const own = tabs.filter(isHermodTab);
   if (own.length) throw new Error(`${own.map((t) => `T${t.id}`).join(', ')} show Hermod itself and can't be changed.`);
+  const claimed = tabs.filter((t) => claimOf(t));
+  if (claimed.length) {
+    throw new Error(
+      `${claimed.map((t) => `T${t.id}`).join(', ')} ${claimed.length === 1 ? 'is' : 'are'} in use by web task ${claimOf(claimed[0]!)!.label}. Wait for it to finish, or stop it.`,
+    );
+  }
   return tabs;
 }
 
@@ -40,6 +47,8 @@ export async function getWindow(windowId: number): Promise<Window> {
   const window = await browser.windows.get(windowId, { populate: true }).catch(() => undefined);
   if (!window) throw new Error(`No window with ID W${windowId}. Call refresh_snapshot to see current windows.`);
   if (window.tabs?.length && window.tabs.every(isHermodTab)) throw new Error(`W${windowId} is Hermod's own window and can't be changed.`);
+  const claim = claimedWindow(windowId);
+  if (claim) throw new Error(`W${windowId} is in use by web task ${claim.label}. Wait for it to finish, or stop it.`);
   return window;
 }
 

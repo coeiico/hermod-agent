@@ -9,17 +9,20 @@ import {
   usePromptInputController,
 } from '@/components/ai-elements/prompt-input';
 import { Suggestion, Suggestions } from '@/components/ai-elements/suggestion';
+import { ActivityDot } from '@/components/hermod/activity-dot';
 import { OptionMenu } from '@/components/hermod/option-menu';
+import { QueuedMessages } from '@/components/hermod/queued-messages';
 import { RunView } from '@/components/hermod/run-view';
 import { ThreadList } from '@/components/hermod/thread-list';
 import { UnlockDialog } from '@/components/hermod/unlock-dialog';
 import { UsageMeter } from '@/components/hermod/usage-meter';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { EFFORT_OPTIONS, MODELS } from '@/ai/models';
 import { isDetachedPage } from '@/lib/detached-window';
-import { canResume, type RunUsage } from '@/lib/run';
+import { canResume, type RunUsage, type ThreadActivity } from '@/lib/run';
 import { getKeyStatus, rpc, type KeyStatus } from '@/lib/rpc';
 import { APPROVAL_MODE_OPTIONS, DEFAULT_SETTINGS, getSettings, onSettingsChanged, updateSettings, type Settings } from '@/lib/settings';
 import { useRun } from '@/lib/use-run';
@@ -46,6 +49,7 @@ const EFFORT_MENU_OPTIONS = EFFORT_OPTIONS.map((o) => ({ ...o, label: `${o.label
 
 const SUGGESTIONS = [
   'Move this tab to a new window',
+  'Add this to my cart',
   'Put all my YouTube tabs in a new window',
   'Sort this window by site',
   'Close duplicate tabs',
@@ -71,6 +75,7 @@ function HeaderButton({ label, onClick, children }: { label: string; onClick: ()
   );
 }
 
+/** The prompt. While a command runs, sending queues the message (or steers it, from the queue) and an empty prompt's button stops the command. */
 function Composer({
   running,
   disabled,
@@ -85,10 +90,11 @@ function Composer({
   onStop: () => void;
 }) {
   const { textInput } = usePromptInputController();
+  const hasText = !!textInput.value.trim();
   return (
     <PromptInput
       onSubmit={({ text }) => {
-        if (text.trim() && !running) onSubmit(text.trim());
+        if (text.trim()) onSubmit(text.trim());
       }}
     >
       <PromptInputBody>
@@ -103,9 +109,9 @@ function Composer({
         <PromptInputSubmit
           variant="ghost"
           className="text-ink hover:text-ink disabled:text-ink-3"
-          status={running ? 'streaming' : 'ready'}
+          status={running && !hasText ? 'streaming' : 'ready'}
           onStop={onStop}
-          disabled={disabled || (!running && !textInput.value.trim())}
+          disabled={disabled || (!running && !hasText)}
         />
       </PromptInputFooter>
     </PromptInput>
@@ -160,11 +166,15 @@ export default function App() {
     cancelUnlock,
     approve,
     stop,
+    steer,
+    unqueue,
+    runQueued,
     openThread,
     newThread,
     deleteThread,
     running,
-    runningThreadId,
+    queue,
+    activity,
   } = useRun();
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [keyStatus, setKeyStatus] = useState<KeyStatus | null>(null);
@@ -184,11 +194,13 @@ export default function App() {
   };
 
   const noKey = keyStatus !== null && !keyStatus.hasVault;
-  // A command is running in a thread other than the one shown; only one runs at a time.
-  const busyElsewhere = runningThreadId !== null && runningThreadId !== thread?.id;
   const turns = thread?.turns ?? [];
   const lastTurn = turns.at(-1);
-  const resumable = !runningThreadId && lastTurn && canResume(lastTurn) ? lastTurn.id : null;
+  const resumable = !running && !queue.length && lastTurn && canResume(lastTurn) ? lastTurn.id : null;
+  // The most urgent news from threads other than the open one, for the threads button.
+  const elsewhere = (['waiting', 'running', 'failed', 'done'] as ThreadActivity[]).find((a) =>
+    Object.entries(activity).some(([id, value]) => id !== thread?.id && value === a),
+  );
   // The usage meter follows the command in progress, else the thread's last one.
   const latest = run ?? turns.at(-1) ?? null;
 
@@ -211,7 +223,10 @@ export default function App() {
               </HeaderButton>
             )}
             <HeaderButton label={view === 'threads' ? 'Back to the open thread' : 'Threads'} onClick={() => setView(view === 'threads' ? 'run' : 'threads')}>
-              {view === 'threads' ? <MessageSquareIcon /> : <MessagesSquareIcon />}
+              <span className="relative">
+                {view === 'threads' ? <MessageSquareIcon /> : <MessagesSquareIcon />}
+                {view === 'run' && <ActivityDot activity={elsewhere} className="-top-0.5 -right-0.5 absolute ring-2 ring-ground" />}
+              </span>
             </HeaderButton>
             {keyStatus?.hasVault && (
               <HeaderButton
@@ -248,10 +263,12 @@ export default function App() {
         </header>
 
         {view === 'threads' ? (
-          <div className="min-h-0 flex-1 overflow-y-auto rounded-[12px] border border-line bg-surface">
+          // The same shadcn scroll area as the chat. Radix wraps its content in a `display: table`
+          // div, which would let long titles widen the pane instead of truncating; `block` stops it.
+          <ScrollArea className="min-h-0 flex-1 rounded-[12px] border border-line bg-surface [&_[data-slot=scroll-area-viewport]>div]:block!">
             <ThreadList
               activeId={thread?.id ?? null}
-              runningId={runningThreadId}
+              activity={activity}
               onOpen={(id) => {
                 openThread(id);
                 setView('run');
@@ -262,16 +279,17 @@ export default function App() {
               }}
               onDelete={deleteThread}
             />
-          </div>
+          </ScrollArea>
         ) : (
           <Conversation className="min-h-0 flex-1 rounded-[12px] border border-line bg-surface">
             <ConversationContent className="gap-4 p-3">
-              {turns.length || run ? (
+              {turns.length || run || queue.length ? (
                 <>
                   {turns.map((turn) => (
                     <RunView key={turn.id} run={turn} onApprove={approve} onResume={turn.id === resumable ? resume : undefined} />
                   ))}
                   {run && <RunView run={run} onApprove={approve} />}
+                  <QueuedMessages queue={queue} running={running} onSteer={steer} onRun={runQueued} onRemove={unqueue} />
                 </>
               ) : noKey ? (
                 <ConversationEmptyState className="pt-16">
@@ -291,7 +309,7 @@ export default function App() {
                   className="pt-16"
                   icon={<SparklesIcon className="size-6 text-ink-3" />}
                   title="What shall I do next?"
-                  description="Move, close, sort, find or reopen tabs and windows in plain words. Try a suggestion below."
+                  description="Move, close, sort, find or reopen tabs and windows in plain words, or hand Hermod a job on a website. Try a suggestion below."
                 />
               )}
             </ConversationContent>
@@ -310,30 +328,15 @@ export default function App() {
               </AlertDescription>
             </Alert>
           )}
-          {busyElsewhere && (
-            <div className="flex items-center justify-between gap-2 rounded-[10px] border border-line bg-surface px-3 py-1.5 text-ink-2 text-sm">
-              <span>A command is running in another thread.</span>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => {
-                  openThread(runningThreadId);
-                  setView('run');
-                }}
-              >
-                Go to it
-              </Button>
-            </div>
-          )}
-          {!running && !busyElsewhere && !noKey && view === 'run' && <SuggestionRow onPick={submit} />}
+          {!running && !queue.length && !noKey && view === 'run' && <SuggestionRow onPick={submit} />}
           <Composer
             running={running}
-            disabled={noKey || busyElsewhere}
+            disabled={noKey}
             placeholder={
               noKey
                 ? 'Add an API key in Settings to start'
-                : busyElsewhere
-                  ? 'Wait for the other command to finish, or stop it there'
+                : running
+                  ? 'Send a follow-up: it waits its turn, or steer it in'
                   : 'Tell Hermod what’s next…'
             }
             onSubmit={submit}

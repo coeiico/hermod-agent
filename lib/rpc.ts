@@ -12,6 +12,8 @@ export type RpcRequest =
   | { type: 'remove-key' }
   | { type: 'test-key'; passphrase?: string }
   | { type: 'list-threads' }
+  /** `stale`: every thread not started today. Threads with a command running are kept. */
+  | { type: 'clear-threads'; which: 'all' | 'stale' }
   | { type: 'pop-out' }
   | { type: 'reattach' };
 
@@ -23,6 +25,9 @@ export type RpcResponse =
       usesDefaultPassphrase?: boolean;
       models?: string[];
       threads?: ThreadSummary[];
+      /** For clear-threads: how many were deleted, and how many were kept because a command is running in them. */
+      cleared?: number;
+      keptRunning?: number;
     }
   | { ok: false; error: string };
 

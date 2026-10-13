@@ -1,7 +1,7 @@
 // The loop that runs an agent: model turns, the tool calls between them, and
 // their limits. History lives only inside one run; every run starts fresh.
 import type Anthropic from '@anthropic-ai/sdk';
-import { throwIfStopped, type RunContext } from './context';
+import { throwIfStopped, type RunContext, type SteeringMessage } from './context';
 import type { AgentDefinition, ConfigOverrides } from './definition';
 import { addUsage, ZERO_USAGE, type RunEvent, type ToolResult } from './events';
 import type { Model, ModelResponse } from './model';
@@ -25,11 +25,60 @@ export interface RunOptions {
   overrides?: ConfigOverrides;
 }
 
+// Page views (outlines, screenshots) are large and go stale as soon as the
+// page changes. Once TRIM_AT of them have built up, all but the newest
+// KEEP_PAGE_VIEWS are replaced. Changing an earlier message invalidates the
+// prompt cache from there on, so trimming happens in batches, not every turn.
+const TRIM_AT = 5;
+const KEEP_PAGE_VIEWS = 2;
+const TRIMMED_PAGE_VIEW = '[Older page view removed; call read_page or screenshot for the current page.]';
+
 function toToolResultBlock(callId: string, result: ToolResult): Anthropic.ToolResultBlockParam {
   if (result.status === 'error') {
     return { type: 'tool_result', tool_use_id: callId, is_error: true, content: `${result.errorType}: ${result.message}` };
   }
+  if (result.status === 'ok' && result.image) {
+    return {
+      type: 'tool_result',
+      tool_use_id: callId,
+      content: [
+        { type: 'text', text: result.output },
+        { type: 'image', source: { type: 'base64', media_type: result.image.mediaType, data: result.image.data } },
+      ],
+    };
+  }
   return { type: 'tool_result', tool_use_id: callId, content: result.output };
+}
+
+function steeringBlock(message: SteeringMessage): Anthropic.TextBlockParam {
+  return { type: 'text', text: `<steering>\n${message.text}\n</steering>` };
+}
+
+/** Adds blocks to the end of the last message, which is the user's. */
+function appendToLastUserMessage(messages: Anthropic.MessageParam[], blocks: Anthropic.ContentBlockParam[]): void {
+  const last = messages.at(-1)!;
+  const content = typeof last.content === 'string' ? [{ type: 'text' as const, text: last.content }] : last.content;
+  messages[messages.length - 1] = { ...last, content: [...content, ...blocks] };
+}
+
+/** Where a page-view tool result sits: its user message and its block within it. */
+interface PageViewAt {
+  message: number;
+  block: number;
+}
+
+/** Replaces the older page views with a note once enough have built up; returns those still whole. */
+function trimPageViews(messages: Anthropic.MessageParam[], pageViews: PageViewAt[]): PageViewAt[] {
+  if (pageViews.length < TRIM_AT) return pageViews;
+  const old = pageViews.slice(0, pageViews.length - KEEP_PAGE_VIEWS);
+  for (const { message, block } of old) {
+    const msg = messages[message]!;
+    const content = (msg.content as Anthropic.ContentBlockParam[]).slice();
+    const result = content[block] as Anthropic.ToolResultBlockParam;
+    content[block] = { type: 'tool_result', tool_use_id: result.tool_use_id, content: TRIMMED_PAGE_VIEW };
+    messages[message] = { ...msg, content };
+  }
+  return pageViews.slice(-KEEP_PAGE_VIEWS);
 }
 
 function definedOnly<T extends object>(value: T | undefined): Partial<T> {
@@ -50,12 +99,20 @@ export async function* streamRun(definition: AgentDefinition, ctx: RunContext, o
     { role: 'user', content: renderTemplate(definition.task, options.variables, `${config.id} task.md`) },
   ];
   let usage = ZERO_USAGE;
+  let pageViews: PageViewAt[] = [];
 
   // The turn after the last is the forced answer: no tools, from what the run has.
   for (let turn = 1; turn <= ctx.limits.maxTurns + 1; turn++) {
     throwIfStopped(ctx);
     const forced = turn > ctx.limits.maxTurns;
     if (forced) console.warn(`[hermod] ${config.id} out of turns, forcing a final answer`);
+    // Steers go after the tool results, so history stays append-only.
+    const steers = ctx.steering?.take() ?? [];
+    if (steers.length) {
+      appendToLastUserMessage(messages, steers.map(steeringBlock));
+      yield { type: 'steering-read', ids: steers.map((m) => m.id) };
+    }
+    pageViews = trimPageViews(messages, pageViews);
     yield { type: 'turn-started', turn };
 
     const callStarted = Date.now();
@@ -93,7 +150,17 @@ export async function* streamRun(definition: AgentDefinition, ctx: RunContext, o
     }
 
     const calls = message.content.filter((b): b is Anthropic.ToolUseBlock => b.type === 'tool_use');
-    if (message.stop_reason !== 'tool_use' || calls.length === 0) {
+    const answered = message.stop_reason !== 'tool_use' || calls.length === 0;
+    // A steer that came in while the model wrote its answer is still read:
+    // the run carries on with it instead of ending.
+    if (answered && !forced && ctx.steering?.size) {
+      messages.push({ role: 'assistant', content: message.content });
+      const late = ctx.steering.take();
+      messages.push({ role: 'user', content: late.map(steeringBlock) });
+      yield { type: 'steering-read', ids: late.map((m) => m.id) };
+      continue;
+    }
+    if (answered) {
       const text = message.content
         .filter((b): b is Anthropic.TextBlock => b.type === 'text')
         .map((b) => b.text)
@@ -116,6 +183,7 @@ export async function* streamRun(definition: AgentDefinition, ctx: RunContext, o
       yield { type: 'tool-call-started', callId: call.id, name: call.name, input: call.input };
       const result = await executeToolCall(tools, { callId: call.id, name: call.name, input: call.input }, ctx);
       yield { type: 'tool-call-finished', callId: call.id, name: call.name, result };
+      if (result.status === 'ok' && result.pageView) pageViews.push({ message: messages.length, block: results.length });
       results.push(toToolResultBlock(call.id, result));
     }
     // All results go back in one user message.

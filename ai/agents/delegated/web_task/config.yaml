@@ -1,0 +1,9 @@
+id: web_task.v1
+# Work inside pages takes judgement: many steps, reading outlines and
+# screenshots, noticing when a page didn't do what was expected. The popup's
+# model and effort pickers set the main agent, not this one.
+model: claude-sonnet-5-5
+effort: medium
+thinking_display: summarized
+max_tokens: 16000
+cache_ttl: 5m

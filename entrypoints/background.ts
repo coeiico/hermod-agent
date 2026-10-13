@@ -1,36 +1,67 @@
-// Background service worker: owns the API key, runs the tool loop, and
-// streams progress to the popup. The popup is only an interface; it can close
-// at any time (moving tabs steals its focus) without stopping a command.
+// Background service worker: owns the API key, runs commands, and streams
+// progress to the popup. The popup is only an interface; it can close at any
+// time (moving tabs steals its focus) without stopping a command.
+//
+// Each thread runs one command at a time; anything sent while it runs waits in
+// the thread's queue, or is steered into the running command. Up to
+// MAX_RUNNING threads run at once.
 import { streamBrowserCommand } from '@/ai/agents/interactive/browser_command/agent';
-import { createRunContext, RunCancelled } from '@/ai/runtime/context';
+import { createRunContext, RunCancelled, SteeringInbox, type Limits } from '@/ai/runtime/context';
 import { AnthropicModel, createAnthropicClient } from '@/ai/runtime/providers/anthropic';
 import { buildSnapshot } from '@/ai/tools/snapshot';
+import { CommandQueue } from '@/lib/command-queue';
 import * as keystore from '@/lib/keystore';
 import type { RpcRequest, RpcResponse } from '@/lib/rpc';
-import { canResume, PORT_NAME, type PortMessage, type PortRequest, type RunState, type RunUpdate } from '@/lib/run';
+import {
+  canResume,
+  PORT_NAME,
+  type PortMessage,
+  type PortRequest,
+  type QueuedCommand,
+  type RunState,
+  type RunUpdate,
+  type ThreadActivity,
+} from '@/lib/run';
 import { RunController } from '@/lib/run-controller';
+import { overallActivity, showActivity } from '@/lib/run-indicator';
 import { popOut, reattach, watchDetachedWindow } from '@/lib/detached-window';
 import { getSettings } from '@/lib/settings';
 import * as threads from '@/lib/threads';
 import { WrongPassphraseError } from '@/lib/vault';
+import { WebTasks } from '@/lib/web-tasks';
 
-// The command in progress, so a restarted worker can file it as interrupted.
-const CURRENT_RUN_KEY = 'currentRun';
+// Commands in progress, so a restarted worker can file them as interrupted.
+const CURRENT_RUNS_KEY = 'currentRuns';
+const QUEUE_KEY = 'commandQueue';
+// More would mostly hit the API key's rate limits.
+const MAX_RUNNING = 3;
+// The main agent may wait on a web task (up to 20 minutes) and act on steers
+// while it does, so it gets more turns and time than a plain tab command needs.
+const COMMAND_LIMITS: Partial<Limits> = { maxTurns: 20, runTimeoutMs: 30 * 60_000 };
 
-interface CurrentRun {
+interface ActiveCommand {
   threadId: string;
-  run: RunState;
+  ctrl: RunController;
+  abort: AbortController;
+  inbox: SteeringInbox;
+  /** The user's steers so far, word for word, for web task briefs. */
+  steers: string[];
+  /** Whether it was waiting on the user at the last check, so the dots change when it does. */
+  waiting: boolean;
 }
 
 export default defineBackground({
   type: 'module',
   main() {
     const ports = new Set<Browser.runtime.Port>();
-    let active: { ctrl: RunController; abort: AbortController; threadId: string } | null = null;
+    const active = new Map<string, ActiveCommand>();
+    // Threads whose next command is being set up, before it shows in `active`.
+    const starting = new Set<string>();
+    let queue = new CommandQueue();
     // The thread the popup shows and the next command joins. Null: a new thread,
-    // created when its first command starts. It may differ from the running
-    // command's thread: the user can read other threads while one runs.
+    // created when its first command is sent.
     let openThread: threads.Thread | null = null;
+    let keepAlive: ReturnType<typeof setInterval> | undefined;
 
     void keystore.initKeystore();
     watchDetachedWindow();
@@ -43,27 +74,31 @@ export default defineBackground({
       if (persistTimer) return;
       persistTimer = setTimeout(() => {
         persistTimer = undefined;
-        if (active) {
-          const current: CurrentRun = { threadId: active.threadId, run: active.ctrl.state };
-          void browser.storage.session.set({ [CURRENT_RUN_KEY]: current });
-        }
+        const runs = Object.fromEntries([...active].map(([threadId, cmd]) => [threadId, cmd.ctrl.state]));
+        void browser.storage.session.set({ [CURRENT_RUNS_KEY]: runs, [QUEUE_KEY]: queue.toJSON() });
       }, 400);
     }
 
-    /** Reopens the last open thread, and files a command the worker died during as interrupted. */
+    /**
+     * Reopens the last open thread, files commands the worker died during as
+     * interrupted, and restores the queues, held until the user runs them.
+     */
     async function recover() {
-      const stored = await browser.storage.session.get(CURRENT_RUN_KEY);
-      const current = stored[CURRENT_RUN_KEY] as CurrentRun | undefined;
-      if (current) {
-        const run: RunState =
-          current.run.status === 'running'
-            ? { ...current.run, status: 'interrupted', error: 'The background worker restarted before this command finished.', endedAt: Date.now() }
-            : current.run;
-        await threads.appendTurn(current.threadId, run);
-        await browser.storage.session.remove(CURRENT_RUN_KEY);
+      const stored = await browser.storage.session.get([CURRENT_RUNS_KEY, QUEUE_KEY]);
+      const runs = (stored[CURRENT_RUNS_KEY] as Record<string, RunState> | undefined) ?? {};
+      for (const [threadId, run] of Object.entries(runs)) {
+        const filed: RunState =
+          run.status === 'running'
+            ? { ...run, status: 'interrupted', error: 'The background worker restarted before this command finished.', endedAt: Date.now() }
+            : run;
+        await threads.appendTurn(threadId, filed);
       }
+      queue = new CommandQueue((stored[QUEUE_KEY] as Record<string, QueuedCommand[]> | undefined) ?? {});
+      queue.pauseAll();
+      await browser.storage.session.set({ [CURRENT_RUNS_KEY]: {}, [QUEUE_KEY]: queue.toJSON() });
       const activeId = await threads.getActiveThreadId();
       openThread = activeId ? ((await threads.getThread(activeId)) ?? null) : null;
+      await broadcastState();
     }
 
     // ------------------------------------------------------------ popup port
@@ -76,9 +111,20 @@ export default defineBackground({
       }
     }
 
-    function broadcast(runId: string, update: RunUpdate) {
-      for (const port of ports) post(port, { type: 'update', runId, update });
+    function postAll(msg: PortMessage) {
+      for (const port of ports) post(port, msg);
+    }
+
+    function onUpdate(cmd: ActiveCommand, runId: string, update: RunUpdate) {
+      postAll({ type: 'update', runId, update });
       persistSoon();
+      // An approval request is registered just after its update goes out, so
+      // check for a change in waiting once it has been.
+      setTimeout(() => {
+        if (cmd.ctrl.waiting === cmd.waiting || !active.has(cmd.threadId)) return;
+        cmd.waiting = cmd.ctrl.waiting;
+        void broadcastState();
+      }, 0);
     }
 
     browser.runtime.onConnect.addListener((port) => {
@@ -90,120 +136,234 @@ export default defineBackground({
       port.onMessage.addListener((msg: PortRequest) => {
         void recovered.then(() => handlePortRequest(port, msg));
       });
-      void recovered.then(() => post(port, stateMessage()));
+      void recovered.then(async () => {
+        // The user is looking at the open thread now.
+        if (openThread) await threads.markViewed(openThread.id);
+        post(port, await stateMessage());
+        void broadcastState();
+      });
     });
 
-    function stateMessage(): PortMessage {
-      const run = active && active.threadId === openThread?.id ? active.ctrl.state : null;
-      return { type: 'state', thread: openThread, run, runningThreadId: active?.threadId ?? null };
+    /** Every thread that is running or has a result the user hasn't seen. */
+    async function activity(): Promise<Record<string, ThreadActivity>> {
+      const out: Record<string, ThreadActivity> = {};
+      for (const [threadId, cmd] of active) out[threadId] = cmd.ctrl.waiting ? 'waiting' : 'running';
+      for (const t of await threads.listThreads()) {
+        if (out[t.id] || !t.lastEndedAt || t.lastEndedAt <= (t.lastViewedAt ?? 0) || t.lastStatus === 'stopped') continue;
+        out[t.id] = t.lastStatus === 'error' || t.lastStatus === 'interrupted' ? 'failed' : 'done';
+      }
+      return out;
     }
 
-    function broadcastState() {
-      for (const port of ports) post(port, stateMessage());
+    async function stateMessage(): Promise<PortMessage> {
+      const run = openThread ? (active.get(openThread.id)?.ctrl.state ?? null) : null;
+      return { type: 'state', thread: openThread, run, queue: queue.list(openThread?.id), activity: await activity() };
+    }
+
+    async function broadcastState() {
+      const msg = await stateMessage();
+      postAll(msg);
+      if (msg.type === 'state') void showActivity(overallActivity(msg.activity));
     }
 
     async function handlePortRequest(port: Browser.runtime.Port, msg: PortRequest) {
       switch (msg.type) {
         case 'run':
-          await startRun(port, msg.command, false);
+          await enqueue(port, msg.command, false);
           break;
         case 'resume': {
           const last = openThread?.turns.at(-1);
-          if (!last || !canResume(last)) {
+          if (!openThread || !last || !canResume(last) || active.has(openThread.id)) {
             post(port, { type: 'error', error: 'There is no stopped command in this thread to resume.' });
             return;
           }
-          await startRun(port, last.command, true);
+          await enqueue(port, last.command, true);
           break;
         }
         case 'approve':
-          active?.ctrl.answerApproval(msg.approvalId, msg.approved);
+          for (const cmd of active.values()) cmd.ctrl.answerApproval(msg.approvalId, msg.approved);
           break;
         case 'stop':
-          active?.abort.abort();
+          if (openThread) active.get(openThread.id)?.abort.abort();
+          break;
+        case 'steer':
+          steer(msg.queuedId);
+          break;
+        case 'unqueue':
+          if (openThread) queue.remove(openThread.id, msg.queuedId);
+          persistSoon();
+          await broadcastState();
+          break;
+        case 'run-queued':
+          if (openThread) queue.unpause(openThread.id, msg.queuedId);
+          pump();
+          await broadcastState();
           break;
         case 'open-thread':
         case 'new-thread': {
           openThread = msg.type === 'open-thread' ? ((await threads.getThread(msg.threadId)) ?? null) : null;
           await threads.setActiveThreadId(openThread?.id ?? null);
-          broadcastState();
+          if (openThread) await threads.markViewed(openThread.id);
+          await broadcastState();
           break;
         }
         case 'delete-thread':
-          if (active?.threadId === msg.threadId) {
-            post(port, { type: 'error', error: "A command is running in that thread. Stop it before deleting the thread." });
+          if (active.has(msg.threadId) || starting.has(msg.threadId)) {
+            post(port, { type: 'error', error: 'A command is running in that thread. Stop it before deleting the thread.' });
             return;
           }
+          queue.deleteThread(msg.threadId);
           await threads.deleteThread(msg.threadId);
           if (openThread?.id === msg.threadId) openThread = null;
-          broadcastState();
+          persistSoon();
+          await broadcastState();
           break;
       }
     }
 
-    async function startRun(port: Browser.runtime.Port, command: string, resumed: boolean) {
+    // ------------------------------------------------------------ commands
+
+    /** Queues a command in the open thread (starting the thread if needed), then starts what can start. */
+    async function enqueue(port: Browser.runtime.Port, command: string, resumed: boolean) {
       const text = command.trim();
       if (!text) return;
-      if (active) {
-        const where = active.threadId === openThread?.id ? '' : ' in another thread';
-        post(port, { type: 'error', error: `A command is already running${where}. Wait for it to finish, or stop it.` });
-        return;
-      }
       if (!(await keystore.hasVault())) {
         post(port, { type: 'error', error: 'No API key yet. Open Settings → Manage keys to add one.' });
         return;
       }
-      const apiKey = await keystore.getUnlockedKey();
-      if (!apiKey) {
+      if (!(await keystore.getUnlockedKey())) {
         post(port, { type: 'needs-unlock' });
         return;
       }
-
-      const settings = await getSettings();
-      const thread = openThread ?? (await threads.createThread(text));
       if (!openThread) {
-        openThread = thread;
-        await threads.setActiveThreadId(thread.id);
+        openThread = await threads.createThread(text);
+        await threads.setActiveThreadId(openThread.id);
       }
-      const ctrl = new RunController(text, settings.model, resumed, broadcast);
-      const abort = new AbortController();
-      active = { ctrl, abort, threadId: thread.id };
-      broadcastState();
+      queue.add(openThread.id, text, { resume: resumed });
+      pump();
+      persistSoon();
+      await broadcastState();
+    }
 
+    /** Sends a queued message into its thread's running command, or runs it next when nothing runs. */
+    function steer(queuedId: string) {
+      const threadId = openThread?.id;
+      if (!threadId) return;
+      const cmd = active.get(threadId);
+      if (!cmd) {
+        queue.unpause(threadId, queuedId);
+        pump();
+      } else {
+        const item = queue.remove(threadId, queuedId);
+        if (!item) return;
+        cmd.steers.push(item.text);
+        cmd.inbox.push({ id: item.id, text: item.text });
+        cmd.ctrl.steer(item.id, item.text);
+      }
+      persistSoon();
+      void broadcastState();
+    }
+
+    /** Starts every queued command that may start now. */
+    function pump() {
+      const busy = (threadId: string) => active.has(threadId) || starting.has(threadId);
+      const started = queue.takeStartable(busy, MAX_RUNNING - active.size - starting.size);
+      for (const { threadId, command } of started) {
+        starting.add(threadId);
+        void runCommand(threadId, command).finally(() => starting.delete(threadId));
+      }
+      if (started.length) persistSoon();
+    }
+
+    function updateKeepAlive() {
       // Extension API calls reset the service worker's idle timer, so a cheap
-      // call every 20s keeps it alive while waiting on the user (confirmations).
-      const keepAlive = setInterval(() => void browser.runtime.getPlatformInfo(), 20_000);
+      // call every 20s keeps it alive while commands run or wait on the user.
+      if (active.size && !keepAlive) keepAlive = setInterval(() => void browser.runtime.getPlatformInfo(), 20_000);
+      if (!active.size && keepAlive) {
+        clearInterval(keepAlive);
+        keepAlive = undefined;
+      }
+    }
+
+    async function runCommand(threadId: string, queued: QueuedCommand) {
+      const thread = await threads.getThread(threadId);
+      if (!thread) return;
+      const apiKey = await keystore.getUnlockedKey();
+      if (!apiKey) {
+        // Locked since it was queued: hold it until the user unlocks and runs it.
+        queue.add(threadId, queued.text, { id: queued.id, resume: queued.resume, front: true, paused: true });
+        postAll({ type: 'needs-unlock' });
+        persistSoon();
+        await broadcastState();
+        return;
+      }
+      const settings = await getSettings();
+      const abort = new AbortController();
+      const inbox = new SteeringInbox();
+      const cmd: ActiveCommand = { threadId, abort, inbox, steers: [], waiting: false, ctrl: undefined as unknown as RunController };
+      cmd.ctrl = new RunController(queued.text, settings.model, !!queued.resume, (runId, update) => onUpdate(cmd, runId, update));
+      active.set(threadId, cmd);
+      starting.delete(threadId);
+      updateKeepAlive();
+      await broadcastState();
+
+      const model = new AnthropicModel(createAnthropicClient(apiKey));
+      const tasks = new WebTasks({
+        cancel: abort.signal,
+        ctrl: cmd.ctrl,
+        command: queued.text,
+        steering: () => cmd.steers,
+        approval: settings.approvalMode,
+        model,
+        cacheTtl: settings.cacheTtl,
+      });
       try {
         const ctx = createRunContext({
           cancel: abort.signal,
           approval: settings.approvalMode,
-          confirm: (request) => ctrl.requestApproval(request.callId, request.question, request.signal),
+          confirm: (request) => cmd.ctrl.requestApproval(request.callId, request.question, request.signal),
+          limits: COMMAND_LIMITS,
+          steering: inbox,
+          children: tasks,
         });
         const snapshot = await buildSnapshot();
-        ctrl.snapshot(snapshot);
+        cmd.ctrl.snapshot(snapshot);
         const earlierTurns = thread.turns.map(threads.toEarlierTurn);
-        const events = streamBrowserCommand(ctx, { snapshot: snapshot.text, command: text, resumed, earlierTurns }, {
-          model: new AnthropicModel(createAnthropicClient(apiKey)),
+        const events = streamBrowserCommand(ctx, { snapshot: snapshot.text, command: queued.text, resumed: !!queued.resume, earlierTurns }, {
+          model,
           overrides: { model: settings.model, effort: settings.effort, cache_ttl: settings.cacheTtl },
         });
-        for await (const event of events) ctrl.handle(event);
+        for await (const event of events) cmd.ctrl.handle(event);
       } catch (err) {
         if (err instanceof RunCancelled || abort.signal.aborted) {
-          ctrl.failDanglingTools('stopped by the user');
-          ctrl.end('stopped', { summary: 'Stopped.' });
+          cmd.ctrl.failDanglingTools('stopped by the user');
+          cmd.ctrl.end('stopped', { summary: 'Stopped.' });
         } else {
           console.error('[hermod] command failed', err instanceof Error ? err.message : err);
-          ctrl.failDanglingTools('the command failed');
-          ctrl.end('error', { error: err instanceof Error ? err.message : String(err) });
+          cmd.ctrl.failDanglingTools('the command failed');
+          cmd.ctrl.end('error', { error: err instanceof Error ? err.message : String(err) });
         }
       } finally {
-        clearInterval(keepAlive);
-        if (!ctrl.finished) ctrl.end('done', { summary: 'Done.' });
-        const updated = await threads.appendTurn(thread.id, ctrl.state);
-        if (openThread?.id === thread.id) openThread = updated ?? null;
-        active = null;
-        await browser.storage.session.remove(CURRENT_RUN_KEY);
-        broadcastState();
+        // A web task the command didn't wait for ends with it.
+        await tasks.stopAll();
+        // Steers that arrived too late to be read run as the thread's next commands.
+        const late = inbox.take();
+        cmd.ctrl.setSteerState(late.map((m) => m.id), 'queued');
+        for (const message of late.reverse()) queue.add(threadId, message.text, { front: true });
+        if (!cmd.ctrl.finished) cmd.ctrl.end('done', { summary: 'Done.' });
+        // After a stop, what was queued behind it waits for the user to run it.
+        if (cmd.ctrl.state.status === 'stopped') queue.pauseThread(threadId);
+        const updated = await threads.appendTurn(threadId, cmd.ctrl.state);
+        if (openThread?.id === threadId) {
+          openThread = updated ?? null;
+          // Finished in front of the user: nothing unread.
+          if (ports.size) await threads.markViewed(threadId);
+        }
+        active.delete(threadId);
+        updateKeepAlive();
+        persistSoon();
+        pump();
+        await broadcastState();
       }
     }
 
@@ -272,6 +432,18 @@ export default defineBackground({
         }
         case 'list-threads':
           return { ok: true, threads: await threads.listThreads() };
+        case 'clear-threads': {
+          const startOfToday = new Date().setHours(0, 0, 0, 0);
+          const busy = (id: string) => active.has(id) || starting.has(id);
+          const wanted = (t: threads.ThreadSummary) => msg.which === 'all' || t.createdAt < startOfToday;
+          const keptRunning = (await threads.listThreads()).filter((t) => wanted(t) && busy(t.id)).length;
+          const cleared = await threads.clearThreads((t) => !wanted(t) || busy(t.id));
+          for (const id of cleared) queue.deleteThread(id);
+          if (openThread && cleared.includes(openThread.id)) openThread = null;
+          persistSoon();
+          await broadcastState();
+          return { ok: true, cleared: cleared.length, keptRunning };
+        }
         case 'pop-out':
           await popOut();
           return { ok: true };

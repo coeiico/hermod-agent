@@ -17,7 +17,8 @@ import {
   sortBookmarks,
   updateBookmark,
 } from './library';
-import { getPageLinks, getPageText } from './pages';
+import { click, clickAt, pressKey, scrollPage, selectOption, typeText, waitFor } from './page-actions';
+import { findInPage, getPageLinks, getPageText, readPage, screenshot } from './pages';
 import { refreshSnapshot } from './snapshot';
 import {
   activateTab,
@@ -35,6 +36,7 @@ import {
   sortTabs,
   zoomTabs,
 } from './tabs';
+import { closePage, goBack, goTo, listPages, openPage, showPage } from './task-pages';
 import { closeWindow, focusWindow, mergeWindows, newWindowWithTabs, setWindowState } from './windows';
 
 export const BROWSER_TOOLS: readonly Tool[] = [
@@ -76,7 +78,22 @@ export const BROWSER_TOOLS: readonly Tool[] = [
   deleteHistory,
 ];
 
-/** The UI label for a tool, falling back to its name. */
-export function toolTitle(name: string): string {
-  return BROWSER_TOOLS.find((t) => t.name === name)?.title ?? name;
-}
+/** The tools a web task works with inside its own pages, in a fixed order (append only, as above). */
+export const WEB_TASK_TOOLS: readonly Tool[] = [
+  listPages,
+  openPage,
+  goTo,
+  goBack,
+  showPage,
+  closePage,
+  readPage,
+  findInPage,
+  screenshot,
+  click,
+  clickAt,
+  typeText,
+  selectOption,
+  pressKey,
+  scrollPage,
+  waitFor,
+];

@@ -3,13 +3,27 @@
 // recover from.
 import { z } from 'zod';
 import { throwIfStopped, type ApprovalMode, type RunContext } from './context';
-import type { ToolResult } from './events';
+import type { ToolImage, ToolResult } from './events';
 
 /** What a tool does to the browser. `read` changes nothing; `destructive` loses something the user had open. */
 export type ToolEffect = 'read' | 'write' | 'destructive';
 
 export interface ToolRunContext {
   signal: AbortSignal;
+  callId: string;
+  /** The run the call belongs to. */
+  run: RunContext;
+}
+
+/** What a tool returns: text, or text with an image (a screenshot) or marked as a page view. */
+export type ToolOutput = string | { text: string; image?: ToolImage; pageView?: boolean };
+
+/**
+ * Thrown by a tool that will not do what was asked in any mode (typing a
+ * password, say). The model reads it as a `refused` error.
+ */
+export class ToolRefusal extends Error {
+  override name = 'ToolRefusal';
 }
 
 interface ToolBase<S extends z.ZodType> {
@@ -21,11 +35,19 @@ interface ToolBase<S extends z.ZodType> {
   input: S;
   /** Overrides the run's tool timeout, for a tool that is slow by nature. */
   timeoutMs?: number;
-  run: (input: z.infer<S>, ctx: ToolRunContext) => Promise<string>;
+  run: (input: z.infer<S>, ctx: ToolRunContext) => Promise<ToolOutput>;
 }
 
-/** A question to put to the user before running, or null to run straight away. */
-type Confirm<S extends z.ZodType> = (input: z.infer<S>) => Promise<string | null> | string | null;
+/**
+ * A question to put to the user before running, or null to run straight away.
+ * A plain question is asked in `ask` and `auto` mode (in every mode for an
+ * `alwaysAsk` tool). The object form sets that per call: `when` names the
+ * least strict mode that still asks (`ask`: only in ask mode; `auto`: in ask
+ * and auto; `always`: in every mode).
+ */
+export type Confirmation = string | { question: string; when: 'ask' | 'auto' | 'always' } | null;
+
+type Confirm<S extends z.ZodType> = (input: z.infer<S>, ctx: ToolRunContext) => Promise<Confirmation> | Confirmation;
 
 // A destructive tool must say how it asks for confirmation; it may still skip
 // asking for small changes (closing one tab) by returning null. A write tool
@@ -58,11 +80,18 @@ function describe(err: unknown): string {
 }
 
 /** The question to ask before this call under the run's approval mode, or null to run without asking. */
-async function approvalQuestion(tool: Tool, input: unknown, mode: ApprovalMode): Promise<string | null> {
-  if (tool.effect === 'read' || (mode === 'never' && !tool.alwaysAsk)) return null;
-  const question = tool.confirm ? await tool.confirm(input) : null;
-  if (question || mode !== 'ask') return question;
-  return `${tool.title}?`;
+async function approvalQuestion(tool: Tool, input: unknown, mode: ApprovalMode, ctx: ToolRunContext): Promise<string | null> {
+  if (tool.effect === 'read') return null;
+  const asked = tool.confirm ? await tool.confirm(input, ctx) : null;
+  const { question, when } =
+    asked === null
+      ? { question: null, when: 'auto' }
+      : typeof asked === 'string'
+        ? { question: asked, when: tool.alwaysAsk ? 'always' : 'auto' }
+        : asked;
+  if (mode === 'never') return when === 'always' ? question : null;
+  if (mode === 'auto') return when === 'ask' ? null : question;
+  return question ?? `${tool.title}?`;
 }
 
 class ToolTimeout extends Error {
@@ -106,10 +135,11 @@ export async function executeToolCall(
     return error('invalid_input', `${issues}. Input received: ${JSON.stringify(call.input)}`);
   }
   const input = parsed.data;
+  const toolCtx: ToolRunContext = { signal: ctx.signal, callId: call.callId, run: ctx };
 
   let question: string | null;
   try {
-    question = await approvalQuestion(tool, input, ctx.approval);
+    question = await approvalQuestion(tool, input, ctx.approval, toolCtx);
   } catch (err) {
     return error('confirmation_failed', describe(err));
   }
@@ -127,14 +157,16 @@ export async function executeToolCall(
 
   try {
     const output = await withTimeout(
-      tool.run(input, { signal: ctx.signal }),
+      tool.run(input, toolCtx),
       tool.timeoutMs ?? ctx.limits.toolTimeoutMs,
       `Tool "${tool.name}"`,
       ctx.signal,
     );
-    return { status: 'ok', output };
+    if (typeof output === 'string') return { status: 'ok', output };
+    return { status: 'ok', output: output.text, ...(output.image ? { image: output.image } : {}), ...(output.pageView ? { pageView: true } : {}) };
   } catch (err) {
     throwIfStopped(ctx);
+    if (err instanceof ToolRefusal) return error('refused', err.message);
     return error(err instanceof ToolTimeout ? 'timeout' : 'failed', describe(err));
   }
 }

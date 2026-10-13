@@ -21,8 +21,9 @@ export const DEFAULT_LIMITS: Limits = {
 
 /**
  * When the user is asked before a tool runs. `ask`: before anything that changes
- * the browser. `auto`: only when a tool's own check asks (closing many tabs, say).
- * `never`: only for `alwaysAsk` tools (deleting bookmarks or history, downloads).
+ * the browser. `auto`: only when a tool's own check asks (closing many tabs, a
+ * form submit). `never`: only for calls that always ask (deleting bookmarks or
+ * history, downloads, sending or deleting something in a page).
  */
 export type ApprovalMode = 'ask' | 'auto' | 'never';
 
@@ -32,6 +33,68 @@ export interface ConfirmationRequest {
   question: string;
   /** Aborts when the run stops or the confirmation times out; the answer must then resolve to false. */
   signal: AbortSignal;
+}
+
+/** A message the user sent into a run while it works: a steer. */
+export interface SteeringMessage {
+  id: string;
+  /** The text as the model should read it, already saying who it is from. */
+  text: string;
+}
+
+/**
+ * Steers waiting for a run. The caller pushes; the runner takes them before its
+ * next model call, and a tool that waits a long time can wake on one.
+ */
+export class SteeringInbox {
+  private waiting: SteeringMessage[] = [];
+  private listeners = new Set<() => void>();
+
+  push(message: SteeringMessage): void {
+    this.waiting.push(message);
+    for (const listener of [...this.listeners]) listener();
+  }
+
+  /** Takes every waiting message, oldest first. */
+  take(): SteeringMessage[] {
+    return this.waiting.splice(0);
+  }
+
+  get size(): number {
+    return this.waiting.length;
+  }
+
+  /** Resolves once a message is waiting (at once if one already is); rejects when `signal` aborts. */
+  waitForMessage(signal: AbortSignal): Promise<void> {
+    if (this.waiting.length) return Promise.resolve();
+    return new Promise<void>((resolve, reject) => {
+      const done = () => {
+        this.listeners.delete(done);
+        signal.removeEventListener('abort', onAbort);
+        resolve();
+      };
+      const onAbort = () => {
+        this.listeners.delete(done);
+        reject(signal.reason);
+      };
+      if (signal.aborted) return onAbort();
+      this.listeners.add(done);
+      signal.addEventListener('abort', onAbort, { once: true });
+    });
+  }
+}
+
+/**
+ * Runs this run starts and waits on, such as a web task. The caller wires up
+ * which agent they run; tools reach them through the run context.
+ */
+export interface ChildRuns {
+  /** Starts a child run from the tool call `parentCallId` and returns its ID. Throws when `input` is invalid. */
+  start(input: unknown, parentCallId: string): Promise<string>;
+  /** The child's report once it ends. Rejects when `signal` aborts. */
+  wait(id: string, signal: AbortSignal): Promise<string>;
+  steer(id: string, text: string): void;
+  stop(id: string): void;
 }
 
 export interface RunContext {
@@ -44,6 +107,10 @@ export interface RunContext {
   approval: ApprovalMode;
   /** Asks the user before a tool with a confirmation question runs. */
   confirm: (request: ConfirmationRequest) => Promise<boolean>;
+  /** Messages the user sends while the run works. */
+  steering?: SteeringInbox;
+  /** Child runs this run may start. */
+  children?: ChildRuns;
 }
 
 export class RunCancelled extends Error {
@@ -59,6 +126,8 @@ export function createRunContext(options: {
   approval: ApprovalMode;
   confirm: RunContext['confirm'];
   limits?: Partial<Limits>;
+  steering?: SteeringInbox;
+  children?: ChildRuns;
 }): RunContext {
   const limits = { ...DEFAULT_LIMITS, ...options.limits };
   return {
@@ -67,6 +136,8 @@ export function createRunContext(options: {
     signal: AbortSignal.any([options.cancel, AbortSignal.timeout(limits.runTimeoutMs)]),
     approval: options.approval,
     confirm: options.confirm,
+    steering: options.steering,
+    children: options.children,
   };
 }
 

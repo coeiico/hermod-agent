@@ -1,15 +1,26 @@
-// Worker-side owner of the current run. It turns the agent runtime's events
-// into RunUpdates, folds each into the state (same reducer as the popup) and
-// broadcasts it to any connected popup.
+// Worker-side owner of one run: a command, or a web task inside one. It turns
+// the agent runtime's events into RunUpdates, folds each into the state (same
+// reducer as the popup) and broadcasts it. A web task's controller broadcasts
+// through its command's, as task updates.
+import { webTaskAgent } from '@/ai/agents/delegated/web_task/agent';
+import { browserCommandAgent } from '@/ai/agents/interactive/browser_command/agent';
 import { costOf } from '@/ai/models';
 import { addUsage, ZERO_USAGE, type RunEvent, type Usage } from '@/ai/runtime/events';
 import type { Snapshot } from '@/ai/tools/snapshot';
-import { toolTitle } from '@/ai/tools/catalog';
-import { applyUpdate, newRun, type RunState, type RunStatus, type RunUpdate } from './run';
+import { applyUpdate, newRun, type RunState, type RunStatus, type RunUpdate, type SteerState } from './run';
+
+const TOOL_TITLES = new Map([...browserCommandAgent.tools, ...webTaskAgent.tools].map((t) => [t.name, t.title]));
+
+/** The UI label for a tool, falling back to its name. */
+function toolTitle(name: string): string {
+  return TOOL_TITLES.get(name) ?? name;
+}
 
 export class RunController {
   state: RunState;
   private approvals = new Map<string, (approved: boolean) => void>();
+  /** Controllers of the web tasks this run started. */
+  private tasks = new Set<RunController>();
   // API content-block index -> UI part index, for the response being streamed.
   private blockParts = new Map<number, number>();
   private usage: Usage = ZERO_USAGE;
@@ -110,10 +121,30 @@ export class RunController {
         else if (result.status === 'error') this.emit({ type: 'tool-error', toolCallId: event.callId, errorText: result.message });
         break;
       }
+      case 'steering-read':
+        this.emit({ type: 'steer-state', ids: event.ids, state: 'read' });
+        break;
       case 'run-finished':
         this.end('done', { summary: event.result.text || 'Done.' });
         break;
     }
+  }
+
+  /** Shows a steer the user sent into the run. */
+  steer(id: string, text: string) {
+    this.emit({ type: 'steer', id, text });
+  }
+
+  setSteerState(ids: string[], state: SteerState) {
+    if (ids.length) this.emit({ type: 'steer-state', ids, state });
+  }
+
+  /** A controller for a web task started by the tool call `callId`, whose updates show nested under that call. */
+  startTask(callId: string, goal: string, model: string): RunController {
+    const task = new RunController(goal, model, false, (_, update) => this.emit({ type: 'task-update', task: callId, update }));
+    this.tasks.add(task);
+    this.emit({ type: 'task-start', task: callId, run: task.state });
+    return task;
   }
 
   /** Shows the question in the popup and waits for the answer, or false when `signal` aborts. */
@@ -136,6 +167,12 @@ export class RunController {
 
   answerApproval(approvalId: string, approved: boolean) {
     this.approvals.get(approvalId)?.(approved);
+    for (const task of this.tasks) task.answerApproval(approvalId, approved);
+  }
+
+  /** Whether this run, or a web task it started, is waiting on the user. */
+  get waiting(): boolean {
+    return this.approvals.size > 0 || [...this.tasks].some((t) => t.waiting);
   }
 
   /**
@@ -154,7 +191,7 @@ export class RunController {
     }
   }
 
-  end(status: RunStatus, extra: { summary?: string; error?: string } = {}) {
+  end(status: RunStatus, extra: { summary?: string; error?: string; needsUser?: boolean } = {}) {
     this.emit({ type: 'run-end', status, ...extra });
   }
 
