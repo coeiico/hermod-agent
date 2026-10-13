@@ -181,6 +181,8 @@ export default function App() {
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [keyStatus, setKeyStatus] = useState<KeyStatus | null>(null);
   const [view, setView] = useState<'run' | 'threads'>('run');
+  // Unlocking from the lock button, before any command needs the key.
+  const [unlocking, setUnlocking] = useState(false);
 
   const refreshKeyStatus = useCallback(() => void getKeyStatus().then(setKeyStatus), []);
 
@@ -197,7 +199,14 @@ export default function App() {
   useEffect(() => {
     void getSettings().then(setSettings);
     refreshKeyStatus();
-    return onSettingsChanged(setSettings);
+    const off = onSettingsChanged(setSettings);
+    // The unlocked key lives in storage.session: follow locking and unlocking done elsewhere, like Settings.
+    const onSession = (_: unknown, area: string) => area === 'session' && refreshKeyStatus();
+    browser.storage.onChanged.addListener(onSession);
+    return () => {
+      off();
+      browser.storage.onChanged.removeListener(onSession);
+    };
   }, [refreshKeyStatus]);
 
   const submit = (text: string) => {
@@ -242,12 +251,11 @@ export default function App() {
             </HeaderButton>
             {keyStatus?.hasVault && (
               <HeaderButton
-                label={keyStatus.unlocked ? 'Lock (forget the unlocked key)' : 'Locked'}
+                label={keyStatus.unlocked ? 'Lock (forget the unlocked key)' : 'Unlock your API key'}
                 onClick={async () => {
-                  if (keyStatus.unlocked) {
-                    await rpc({ type: 'lock' });
-                    refreshKeyStatus();
-                  }
+                  if (!keyStatus.unlocked) return setUnlocking(true);
+                  await rpc({ type: 'lock' });
+                  refreshKeyStatus();
                 }}
               >
                 {keyStatus.unlocked ? <LockOpenIcon /> : <LockIcon />}
@@ -362,9 +370,13 @@ export default function App() {
         </div>
 
         <UnlockDialog
-          open={needsUnlock}
-          onCancel={cancelUnlock}
+          open={needsUnlock || unlocking}
+          onCancel={() => {
+            setUnlocking(false);
+            cancelUnlock();
+          }}
           onUnlocked={() => {
+            setUnlocking(false);
             refreshKeyStatus();
             resumeAfterUnlock();
           }}

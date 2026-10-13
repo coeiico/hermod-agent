@@ -330,6 +330,21 @@ try {
   check(/Web task · needs you/.test(popupText), 'the popup shows the web task card as needing the user');
   check(/Steer/.test(popupText), 'the popup shows the steer');
 
+  // The lock button: lock, then unlock straight from it, with no command waiting.
+  const clickLabel = (label) => cdp.evaluate(popup, `(() => { const b = document.querySelector('[aria-label="${label}"]'); b?.click(); return !!b; })()`);
+  check(await clickLabel('Lock (forget the unlocked key)'), 'the lock button locks the key');
+  await sleep(400);
+  check(await clickLabel('Unlock your API key'), 'the lock button shows the key as locked');
+  await sleep(400);
+  const dialogOpen = await cdp.evaluate(popup, `!!document.querySelector('[role="dialog"] input[type="password"]')`);
+  check(dialogOpen, 'clicking the locked button opens the unlock dialog');
+  await cdp.evaluate(popup, `(() => { document.querySelector('[role="dialog"] input[type="password"]').focus(); return true; })()`);
+  await cdp.send('Input.insertText', { text: 'dank memes' }, popup);
+  await cdp.evaluate(popup, `(() => { [...document.querySelectorAll('[role="dialog"] button')].find((b) => b.textContent.includes('Unlock'))?.click(); return true; })()`);
+  await sleep(800);
+  const unlockedAgain = await cdp.evaluate(popup, `!!document.querySelector('[aria-label="Lock (forget the unlocked key)"]') && !document.querySelector('[role="dialog"]')`);
+  check(unlockedAgain, 'unlocking from the dialog unlocks the key and closes it');
+
   // The thread list, with a thread working: its dot sits beside the title without moving it.
   await send({ type: 'new-thread' });
   await sleep(200);
