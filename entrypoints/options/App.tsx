@@ -255,7 +255,7 @@ function ModeCard({ settings }: { settings: Settings }) {
             </SelectTrigger>
             <SelectContent>
               {APPROVAL_MODE_OPTIONS.map((o) => (
-                <SelectItem key={o.value} value={o.value}>
+                <SelectItem key={o.value} value={o.value} className={o.danger ? 'text-bad-ink' : undefined}>
                   {o.label}
                 </SelectItem>
               ))}

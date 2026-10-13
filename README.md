@@ -58,6 +58,7 @@ If a shortcut clashes with your system or browser, change it on your browser's e
 | Ask first | Asks before every change. |
 | Auto (default) | Asks before risky changes. |
 | Don't ask | Asks only before what can't be undone. |
+| Bypass all | Never asks, even before what can't be undone. |
 
 **Choose a model.** Claude Haiku 5.5 is the default: fast and cheap, and right for clear commands. Switch to Claude Sonnet 5.5 for fuzzy or many-step requests. Each command shows what it cost.
 
@@ -67,7 +68,7 @@ If a shortcut clashes with your system or browser, change it on your browser's e
 - Each command sends Claude a summary of your open windows and tabs (titles and addresses), plus whatever the command needs: page text when you ask about a page, a screenshot when you ask how something looks.
 - Hermod has access to all sites so it can read a page when you ask. It reads pages only for a command, never in the background. Browser-internal pages and extension stores can't be read.
 - Your key, settings and threads stay in this browser.
-- A web page can contain text written to steer an AI agent. Hermod's guardrails refuse or always ask about risky actions inside pages, but in **Don't ask** mode a page could still steer its ordinary clicks. Use **Auto** or **Ask first** on sites you don't trust.
+- A web page can contain text written to steer an AI agent. Hermod's guardrails refuse or always ask about risky actions inside pages, but in **Don't ask** mode a page could still steer its ordinary clicks, and in **Bypass all** it could steer a send, post or delete. Use **Auto** or **Ask first** on sites you don't trust.
 
 ## Development
 

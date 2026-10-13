@@ -25,7 +25,7 @@ import {
 import { RunController } from '@/lib/run-controller';
 import { overallActivity, showActivity } from '@/lib/run-indicator';
 import { popOut, reattach, watchDetachedWindow } from '@/lib/detached-window';
-import { getSettings } from '@/lib/settings';
+import { getSettings, onSettingsChanged } from '@/lib/settings';
 import * as threads from '@/lib/threads';
 import { WrongPassphraseError } from '@/lib/vault';
 import { WebTasks } from '@/lib/web-tasks';
@@ -307,20 +307,23 @@ export default defineBackground({
       updateKeepAlive();
       await broadcastState();
 
+      // The mode applies live: switching it mid-command changes what the next action asks.
+      let approvalMode = settings.approvalMode;
+      const stopFollowingMode = onSettingsChanged((s) => (approvalMode = s.approvalMode));
       const model = new AnthropicModel(createAnthropicClient(apiKey));
       const tasks = new WebTasks({
         cancel: abort.signal,
         ctrl: cmd.ctrl,
         command: queued.text,
         steering: () => cmd.steers,
-        approval: settings.approvalMode,
+        approval: () => approvalMode,
         model,
         cacheTtl: settings.cacheTtl,
       });
       try {
         const ctx = createRunContext({
           cancel: abort.signal,
-          approval: settings.approvalMode,
+          approval: () => approvalMode,
           confirm: (request) => cmd.ctrl.requestApproval(request.callId, request.question, request.signal),
           limits: COMMAND_LIMITS,
           steering: inbox,
@@ -344,6 +347,7 @@ export default defineBackground({
           cmd.ctrl.end('error', { error: err instanceof Error ? err.message : String(err) });
         }
       } finally {
+        stopFollowingMode();
         // A web task the command didn't wait for ends with it.
         await tasks.stopAll();
         // Steers that arrived too late to be read run as the thread's next commands.

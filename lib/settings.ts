@@ -26,10 +26,11 @@ export const DEFAULT_SETTINGS: Settings = {
   usesDefaultPassphrase: true,
 };
 
-export const APPROVAL_MODE_OPTIONS: { value: ApprovalMode; label: string; description: string }[] = [
+export const APPROVAL_MODE_OPTIONS: { value: ApprovalMode; label: string; description: string; danger?: boolean }[] = [
   { value: 'ask', label: 'Ask first', description: 'Asks before every change.' },
   { value: 'auto', label: 'Auto', description: 'Asks before risky changes.' },
   { value: 'never', label: "Don't ask", description: "Asks only before what can't be undone." },
+  { value: 'bypass', label: 'Bypass all', description: "Never asks, even before what can't be undone.", danger: true },
 ];
 
 const KEY = 'settings';

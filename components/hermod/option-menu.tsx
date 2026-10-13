@@ -7,11 +7,14 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { cn } from '@/lib/utils';
 
 export interface MenuOption<T extends string> {
   value: T;
   label: string;
   description: string;
+  /** Shown in the danger colour, in the menu and on the button while chosen. */
+  danger?: boolean;
 }
 
 /**
@@ -42,7 +45,10 @@ export function OptionMenu<T extends string>({
               variant="ghost"
               size="sm"
               aria-label={`${name}: ${current.label}`}
-              className="font-normal text-ink-2 hover:text-ink data-[state=open]:bg-accent data-[state=open]:text-ink"
+              className={cn(
+                'font-normal text-ink-2 hover:text-ink data-[state=open]:bg-accent data-[state=open]:text-ink',
+                current.danger && 'text-bad-ink hover:text-bad-ink data-[state=open]:text-bad-ink',
+              )}
             >
               {current.label}
             </Button>
@@ -56,7 +62,10 @@ export function OptionMenu<T extends string>({
             <DropdownMenuRadioItem
               key={o.value}
               value={o.value}
-              className="group flex-col items-start gap-0 text-base data-[state=checked]:bg-ground-sunk data-[state=checked]:font-medium data-[state=checked]:text-ink"
+              className={cn(
+                'group flex-col items-start gap-0 text-base data-[state=checked]:bg-ground-sunk data-[state=checked]:font-medium data-[state=checked]:text-ink',
+                o.danger && 'text-bad-ink data-[state=checked]:text-bad-ink',
+              )}
             >
               {o.label}
               <span className="font-normal text-ink-3 text-xs group-data-[state=checked]:text-ink-2">{o.description}</span>

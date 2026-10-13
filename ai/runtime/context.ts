@@ -23,9 +23,10 @@ export const DEFAULT_LIMITS: Limits = {
  * When the user is asked before a tool runs. `ask`: before anything that changes
  * the browser. `auto`: only when a tool's own check asks (closing many tabs, a
  * form submit). `never`: only for calls that always ask (deleting bookmarks or
- * history, downloads, sending or deleting something in a page).
+ * history, downloads, sending or deleting something in a page). `bypass`: never.
+ * Page guardrail refusals still apply in every mode; they are not questions.
  */
-export type ApprovalMode = 'ask' | 'auto' | 'never';
+export type ApprovalMode = 'ask' | 'auto' | 'never' | 'bypass';
 
 export interface ConfirmationRequest {
   callId: string;
@@ -103,8 +104,8 @@ export interface RunContext {
   cancel: AbortSignal;
   /** Aborts on cancel or when the run passes its deadline. Every wait in the run uses it. */
   signal: AbortSignal;
-  /** Which tool calls need the user's approval. */
-  approval: ApprovalMode;
+  /** Which tool calls need the user's approval: the mode now, read at each call, as the user can switch it mid-run. */
+  approval: () => ApprovalMode;
   /** Asks the user before a tool with a confirmation question runs. */
   confirm: (request: ConfirmationRequest) => Promise<boolean>;
   /** Messages the user sends while the run works. */
@@ -123,7 +124,7 @@ export class RunDeadlineExceeded extends Error {
 
 export function createRunContext(options: {
   cancel: AbortSignal;
-  approval: ApprovalMode;
+  approval: () => ApprovalMode;
   confirm: RunContext['confirm'];
   limits?: Partial<Limits>;
   steering?: SteeringInbox;

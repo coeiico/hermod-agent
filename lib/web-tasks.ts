@@ -45,7 +45,8 @@ export interface WebTaskHost {
   command: string;
   /** What the user has said into the command so far, word for word. */
   steering: () => readonly string[];
-  approval: ApprovalMode;
+  /** The mode now; see RunContext.approval. */
+  approval: () => ApprovalMode;
   model: Model;
   cacheTtl: CacheTtl;
 }
@@ -96,7 +97,7 @@ export class WebTasks implements ChildRuns {
       userCommand: this.host.command,
       steering: this.host.steering(),
       start,
-      approval: this.host.approval,
+      approval: this.host.approval(),
       now: now(),
     });
     this.tasks.set(id, task);

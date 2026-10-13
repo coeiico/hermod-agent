@@ -139,7 +139,7 @@ function context(
   const cancel = options.cancel ?? new AbortController();
   return createRunContext({
     cancel: cancel.signal,
-    approval: options.approval ?? 'auto',
+    approval: () => options.approval ?? 'auto',
     confirm: async (req) => options.confirm?.(req.question) ?? false,
     limits: options.limits,
     steering: options.steering,
@@ -314,6 +314,28 @@ describe('streamRun', () => {
     expect(await asked('ask')).toEqual(['Press (ask)?', 'Press (auto)?', 'Press (always)?']);
     expect(await asked('auto')).toEqual(['Press (auto)?', 'Press (always)?']);
     expect(await asked('never')).toEqual(['Press (always)?']);
+    expect(await asked('bypass')).toEqual([]);
+  });
+
+  it('reads the approval mode at each call, so a switch mid-run applies to the next call', async () => {
+    let mode: ApprovalMode = 'never';
+    const questions: string[] = [];
+    const model = new ScriptedModel([
+      () => message([toolUse('t1', 'press', { level: 'always' })], 'tool_use'),
+      () => message([toolUse('t2', 'press', { level: 'always' })], 'tool_use'),
+      () => message([text('Done.')], 'end_turn'),
+    ]);
+    const ctx = createRunContext({
+      cancel: new AbortController().signal,
+      approval: () => mode,
+      confirm: async (req) => {
+        questions.push(req.question);
+        mode = 'bypass';
+        return true;
+      },
+    });
+    await collect(streamRun(agent, ctx, { model, variables: { command: 'x' } }));
+    expect(questions).toEqual(['Press (always)?']);
   });
 
   it('sends an image result as text and image blocks', async () => {

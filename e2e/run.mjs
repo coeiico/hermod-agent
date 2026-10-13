@@ -266,6 +266,27 @@ try {
   }
   const sentAfter = await cdp.evaluate(shop, `document.getElementById('feedback').textContent`);
   check(sentAfter === 'Feedback sent', 'approving let the click through');
+
+  // In "Bypass all" the same Send button asks nothing.
+  await cdp.send('Page.navigate', { url: `${base}/shop` }, shop);
+  await sleep(800);
+  await cdp.evaluate(ctl, `chrome.storage.local.set({ settings: { approvalMode: 'bypass' } }).then(() => true)`);
+  const msgsBefore = await cdp.evaluate(ctl, `window.__msgs.length`);
+  await send({ type: 'new-thread' });
+  await sleep(200);
+  await send({ type: 'run', command: 'feedback on this shop' });
+  for (let i = 0; i < 50; i++) {
+    await sleep(100);
+    state = await lastState();
+    if (!state.run && state.thread?.turns?.length) break;
+  }
+  const bypassAsked = await cdp.evaluate(
+    ctl,
+    `window.__msgs.slice(${msgsBefore}).some((m) => m.type === 'update' && m.update.type === 'task-update' && m.update.update.type === 'tool-approval-request')`,
+  );
+  check(!bypassAsked, 'Bypass all asked nothing before Send feedback');
+  const sentBypass = await cdp.evaluate(shop, `document.getElementById('feedback').textContent`);
+  check(sentBypass === 'Feedback sent', 'Bypass all clicked Send feedback');
   await cdp.evaluate(ctl, `chrome.storage.local.set({ settings: {} }).then(() => true)`);
 
   // ------------------------------------------------ inspecting a page

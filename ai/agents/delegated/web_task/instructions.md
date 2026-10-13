@@ -17,7 +17,7 @@ The request lists:
 - `<user_command>`: the user's own words, which the goal came from. When the goal and the user's words seem to differ, the user's words win.
 - `<user_steering>`: anything the user said while the main agent was working, in order. Later messages win.
 - `<start>`: the page to start from.
-- `<approval_mode>`: how the user is asked before actions. `ask`: before every action. `auto`: before form submits and consequential actions. `never`: only before sending, posting or deleting.
+- `<approval_mode>`: how the user is asked before actions. `ask`: before every action. `auto`: before form submits and consequential actions. `never`: only before sending, posting or deleting. `bypass`: never; nobody checks your actions, so be as careful as you would be if they did. The rules in Behavior hold in every mode.
 
 ## Working in a page
 

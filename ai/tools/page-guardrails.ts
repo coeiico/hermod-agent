@@ -1,7 +1,7 @@
 // The hard-coded rules for acting in a page, decided on a plain description of
 // the element (built in the page by page-script.ts). They sit under every
-// approval mode: a refusal is never done, and an `always` action is always
-// asked about, even in "Don't ask".
+// approval mode: a refusal is never done, even in "Bypass all", and an
+// `always` action is asked about in every mode but "Bypass all".
 //
 // The rules match markup and English wording, so they are a backstop, not a
 // guarantee: a site can label its payment button "Continue". The web task's

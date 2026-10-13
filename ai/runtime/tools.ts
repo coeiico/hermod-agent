@@ -40,10 +40,10 @@ interface ToolBase<S extends z.ZodType> {
 
 /**
  * A question to put to the user before running, or null to run straight away.
- * A plain question is asked in `ask` and `auto` mode (in every mode for an
- * `alwaysAsk` tool). The object form sets that per call: `when` names the
+ * A plain question is asked in `ask` and `auto` mode (in `never` mode too for
+ * an `alwaysAsk` tool). The object form sets that per call: `when` names the
  * least strict mode that still asks (`ask`: only in ask mode; `auto`: in ask
- * and auto; `always`: in every mode).
+ * and auto; `always`: in every mode but `bypass`, which never asks).
  */
 export type Confirmation = string | { question: string; when: 'ask' | 'auto' | 'always' } | null;
 
@@ -52,8 +52,9 @@ type Confirm<S extends z.ZodType> = (input: z.infer<S>, ctx: ToolRunContext) => 
 // A destructive tool must say how it asks for confirmation; it may still skip
 // asking for small changes (closing one tab) by returning null. A write tool
 // may ask too, for the calls that warrant it (starting a download).
-// `alwaysAsk` keeps its question even in `never` mode, for the calls no mode
-// should make unseen: ones that can't be undone, or that a page could have asked for.
+// `alwaysAsk` keeps its question even in `never` mode, for the calls that
+// should not go unseen: ones that can't be undone, or that a page could have
+// asked for. Only `bypass` skips it, at the user's own choice.
 export type Tool<S extends z.ZodType = z.ZodType> = ToolBase<S> &
   (
     | { effect: 'read'; confirm?: undefined; alwaysAsk?: undefined }
@@ -81,7 +82,7 @@ function describe(err: unknown): string {
 
 /** The question to ask before this call under the run's approval mode, or null to run without asking. */
 async function approvalQuestion(tool: Tool, input: unknown, mode: ApprovalMode, ctx: ToolRunContext): Promise<string | null> {
-  if (tool.effect === 'read') return null;
+  if (tool.effect === 'read' || mode === 'bypass') return null;
   const asked = tool.confirm ? await tool.confirm(input, ctx) : null;
   const { question, when } =
     asked === null
@@ -139,7 +140,7 @@ export async function executeToolCall(
 
   let question: string | null;
   try {
-    question = await approvalQuestion(tool, input, ctx.approval, toolCtx);
+    question = await approvalQuestion(tool, input, ctx.approval(), toolCtx);
   } catch (err) {
     return error('confirmation_failed', describe(err));
   }
