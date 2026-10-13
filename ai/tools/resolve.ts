@@ -2,7 +2,7 @@
 // the trust boundary for tool input: an ID that doesn't exist, or names a
 // Vivaldi web panel, is refused here with an error the model can act on.
 import { z } from 'zod';
-import { isPanelTab } from './snapshot';
+import { isHermodTab, isPanelTab } from './snapshot';
 
 export type Tab = Browser.tabs.Tab;
 export type Window = Browser.windows.Window;
@@ -26,6 +26,8 @@ export async function getTabs(ids: number[]): Promise<Tab[]> {
   if (panels.length) {
     throw new Error(`${panels.map((t) => `T${t.id}`).join(', ')} are Vivaldi web panels, not tabs, and can't be changed.`);
   }
+  const own = tabs.filter(isHermodTab);
+  if (own.length) throw new Error(`${own.map((t) => `T${t.id}`).join(', ')} show Hermod itself and can't be changed.`);
   return tabs;
 }
 
@@ -37,6 +39,7 @@ export async function getTab(tabId: number): Promise<Tab> {
 export async function getWindow(windowId: number): Promise<Window> {
   const window = await browser.windows.get(windowId, { populate: true }).catch(() => undefined);
   if (!window) throw new Error(`No window with ID W${windowId}. Call refresh_snapshot to see current windows.`);
+  if (window.tabs?.length && window.tabs.every(isHermodTab)) throw new Error(`W${windowId} is Hermod's own window and can't be changed.`);
   return window;
 }
 

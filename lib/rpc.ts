@@ -11,7 +11,9 @@ export type RpcRequest =
   | { type: 'change-passphrase'; oldPassphrase: string; newPassphrase: string }
   | { type: 'remove-key' }
   | { type: 'test-key'; passphrase?: string }
-  | { type: 'list-threads' };
+  | { type: 'list-threads' }
+  | { type: 'pop-out' }
+  | { type: 'reattach' };
 
 export type RpcResponse =
   | {
@@ -31,7 +33,11 @@ export interface KeyStatus {
 }
 
 export async function rpc(request: RpcRequest): Promise<RpcResponse> {
-  return (await browser.runtime.sendMessage(request)) as RpcResponse;
+  const res = (await browser.runtime.sendMessage(request)) as RpcResponse | undefined;
+  // No answer means the worker doesn't handle this request: it is older than
+  // the popup, which happens when a new build is loaded without reloading.
+  if (!res) throw new Error(`The background worker did not answer "${request.type}". Reload Hermod in vivaldi://extensions.`);
+  return res;
 }
 
 export async function getKeyStatus(): Promise<KeyStatus> {

@@ -18,12 +18,28 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { EFFORT_OPTIONS, MODELS } from '@/ai/models';
+import { isDetachedPage } from '@/lib/detached-window';
 import type { RunUsage } from '@/lib/run';
 import { getKeyStatus, rpc, type KeyStatus } from '@/lib/rpc';
 import { APPROVAL_MODE_OPTIONS, DEFAULT_SETTINGS, getSettings, onSettingsChanged, updateSettings, type Settings } from '@/lib/settings';
 import { useRun } from '@/lib/use-run';
-import { KeyRoundIcon, LockIcon, LockOpenIcon, MessageSquareIcon, MessagesSquareIcon, SettingsIcon, SparklesIcon, SquarePenIcon, XIcon } from 'lucide-react';
+import {
+  KeyRoundIcon,
+  LockIcon,
+  LockOpenIcon,
+  MessageSquareIcon,
+  MessagesSquareIcon,
+  SettingsIcon,
+  SparklesIcon,
+  SquareArrowDownLeftIcon,
+  SquareArrowOutUpRightIcon,
+  SquarePenIcon,
+  XIcon,
+} from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
+
+// The popped-out window fills itself; the toolbar popup has a fixed size.
+const DETACHED = isDetachedPage();
 
 const MODEL_OPTIONS = MODELS.map((m) => ({ value: m.id, label: m.name.replace('Claude ', ''), description: m.description }));
 const EFFORT_MENU_OPTIONS = EFFORT_OPTIONS.map((o) => ({ ...o, label: `${o.label} effort` }));
@@ -170,7 +186,7 @@ export default function App() {
 
   return (
     <PromptInputProvider>
-      <div className="flex h-[600px] w-[420px] flex-col gap-2 bg-ground p-2">
+      <div className={`flex flex-col gap-2 bg-ground p-2 ${DETACHED ? 'h-screen w-screen' : 'h-[600px] w-[420px]'}`}>
         <header className="flex items-center gap-1 pl-1.5">
           <span className="font-display font-semibold text-[17px] text-ink leading-[22px] tracking-tight">Hermod</span>
           {thread && view === 'run' && <span className="min-w-0 truncate pl-1 text-ink-3 text-sm">{thread.title}</span>}
@@ -200,6 +216,21 @@ export default function App() {
                 }}
               >
                 {keyStatus.unlocked ? <LockOpenIcon /> : <LockIcon />}
+              </HeaderButton>
+            )}
+            {DETACHED ? (
+              <HeaderButton label="Reattach to the toolbar" onClick={() => void rpc({ type: 'reattach' })}>
+                <SquareArrowDownLeftIcon />
+              </HeaderButton>
+            ) : (
+              <HeaderButton
+                label="Pop out into a window"
+                onClick={async () => {
+                  const res = await rpc({ type: 'pop-out' });
+                  if (res.ok) window.close();
+                }}
+              >
+                <SquareArrowOutUpRightIcon />
               </HeaderButton>
             )}
             <HeaderButton label="Settings" onClick={() => void browser.runtime.openOptionsPage()}>

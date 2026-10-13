@@ -9,6 +9,7 @@ import * as keystore from '@/lib/keystore';
 import type { RpcRequest, RpcResponse } from '@/lib/rpc';
 import { PORT_NAME, type PortMessage, type PortRequest, type RunState, type RunUpdate } from '@/lib/run';
 import { RunController } from '@/lib/run-controller';
+import { popOut, reattach, watchDetachedWindow } from '@/lib/detached-window';
 import { getSettings } from '@/lib/settings';
 import * as threads from '@/lib/threads';
 import { WrongPassphraseError } from '@/lib/vault';
@@ -31,6 +32,7 @@ export default defineBackground({
     let openThread: threads.Thread | null = null;
 
     void keystore.initKeystore();
+    watchDetachedWindow();
     const recovered = recover();
 
     // ------------------------------------------------------------ persistence
@@ -262,6 +264,12 @@ export default defineBackground({
         }
         case 'list-threads':
           return { ok: true, threads: await threads.listThreads() };
+        case 'pop-out':
+          await popOut();
+          return { ok: true };
+        case 'reattach':
+          await reattach();
+          return { ok: true };
       }
     }
   },

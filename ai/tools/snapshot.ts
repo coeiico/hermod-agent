@@ -32,6 +32,11 @@ export function isPanelTab(tab: Tab): boolean {
   }
 }
 
+/** Hermod's own prompt, popped out into a window; the agent must never close or move it. */
+export function isHermodTab(tab: Tab): boolean {
+  return !!tab.url?.startsWith(browser.runtime.getURL('/popup.html'));
+}
+
 export function relativeTime(ms: number | undefined, now = Date.now()): string {
   if (!ms) return '';
   const s = Math.max(0, Math.round((now - ms) / 1000));
@@ -147,14 +152,16 @@ export async function buildSnapshot(): Promise<Snapshot> {
   const nowDate = new Date();
   const now = nowDate.getTime();
 
-  const [windows, lastFocused, displays, closed] = await Promise.all([
+  const [allWindows, lastFocused, displays, closed] = await Promise.all([
     browser.windows.getAll({ populate: true, windowTypes: ['normal', 'popup', 'app'] }),
     browser.windows.getLastFocused({ windowTypes: ['normal'] }).catch(() => undefined),
     displaysSection(),
     recentlyClosedSection(now),
   ]);
 
-  const visibleTabs = (w: Window) => (w.tabs ?? []).filter((t) => !isPanelTab(t));
+  const visibleTabs = (w: Window) => (w.tabs ?? []).filter((t) => !isPanelTab(t) && !isHermodTab(t));
+  // Hermod's own popped-out window is left out, so the agent can't close or move it.
+  const windows = allWindows.filter((w) => !(w.tabs ?? []).some(isHermodTab) || visibleTabs(w).length > 0);
   const totalTabs = windows.reduce((n, w) => n + visibleTabs(w).length, 0);
   const compact = totalTabs > LARGE_SESSION_TABS;
 
