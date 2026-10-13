@@ -67,6 +67,13 @@ describe('browser_command', () => {
     expect(text).toContain('<answer>answer 12</answer>\n<ended>stopped</ended>');
   });
 
+  it('marks a resumed command in the thread and in the task', () => {
+    const stopped: EarlierTurn = { command: 'close my tabs', startedAt: 0, status: 'stopped', actions: [] };
+    expect(formatEarlierTurns([stopped, { ...stopped, status: 'done', resumed: true }])).toContain(
+      '<command>Resume: close my tabs</command>',
+    );
+  });
+
   it('uses the full browser tool catalog with unique names', () => {
     expect(browserCommandAgent.tools).toBe(BROWSER_TOOLS);
     expect(new Set(BROWSER_TOOLS.map((t) => t.name)).size).toBe(BROWSER_TOOLS.length);

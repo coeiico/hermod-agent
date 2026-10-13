@@ -19,11 +19,12 @@ import { Reasoning, ReasoningContent, ReasoningTrigger } from '@/components/ai-e
 import { Shimmer } from '@/components/ai-elements/shimmer';
 import { Tool, ToolContent, ToolHeader, ToolInput, ToolOutput } from '@/components/ai-elements/tool';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
 import { getModel } from '@/ai/models';
 import type { RunState } from '@/lib/run';
 import type { DynamicToolUIPart, UIMessage } from 'ai';
 import type { BundledLanguage } from 'shiki';
-import { AlertCircleIcon, CameraIcon, CheckIcon, CircleStopIcon, MonitorIcon, XIcon } from 'lucide-react';
+import { AlertCircleIcon, CameraIcon, CheckIcon, CircleStopIcon, MonitorIcon, PlayIcon, XIcon } from 'lucide-react';
 
 function thinkingMessage(isStreaming: boolean, duration?: number) {
   if (isStreaming || duration === 0) return <Shimmer duration={1}>Thinking…</Shimmer>;
@@ -114,7 +115,16 @@ function AssistantParts({
   );
 }
 
-export function RunView({ run, onApprove }: { run: RunState; onApprove: (approvalId: string, approved: boolean) => void }) {
+export function RunView({
+  run,
+  onApprove,
+  onResume,
+}: {
+  run: RunState;
+  onApprove: (approvalId: string, approved: boolean) => void;
+  /** Given when this stopped, interrupted or failed command can be carried on. */
+  onResume?: () => void;
+}) {
   const [userMessage, assistant] = run.messages;
   const running = run.status === 'running';
   const parts = assistant?.parts ?? [];
@@ -128,7 +138,10 @@ export function RunView({ run, onApprove }: { run: RunState; onApprove: (approva
     <div className="flex flex-col gap-4">
       {userMessage && (
         <Message from="user">
-          <MessageContent className="px-3 py-2">{run.command}</MessageContent>
+          <MessageContent className="px-3 py-2">
+            {run.resumed && <span className="block text-ink-3 text-xs">Resumed</span>}
+            {run.command}
+          </MessageContent>
         </Message>
       )}
 
@@ -188,6 +201,11 @@ export function RunView({ run, onApprove }: { run: RunState; onApprove: (approva
             </p>
           )}
           {run.status === 'done' && !hasText && run.summary && <MessageResponse>{run.summary}</MessageResponse>}
+          {onResume && (
+            <Button size="sm" variant="outline" className="self-start" onClick={onResume}>
+              <PlayIcon /> Resume
+            </Button>
+          )}
 
           {!running && run.endedAt && (
             <p className="text-ink-3 text-xs tabular-nums">

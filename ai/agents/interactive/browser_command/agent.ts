@@ -23,6 +23,8 @@ const MAX_ANSWER_CHARS = 2_000;
 /** One earlier command in the thread, as the model is told about it. */
 export interface EarlierTurn {
   command: string;
+  /** Carried on the command before it, which was stopped, interrupted or failed. */
+  resumed?: boolean;
   startedAt: number;
   status: 'done' | 'error' | 'stopped' | 'interrupted';
   actions: {
@@ -40,12 +42,19 @@ export interface BrowserCommandInput {
   /** The snapshot text from buildSnapshot(). */
   snapshot: string;
   command: string;
+  /** Carry on the thread's last command (the same text) instead of starting it fresh. */
+  resumed: boolean;
   /** Earlier turns of the thread, oldest first. */
   earlierTurns: readonly EarlierTurn[];
 }
 
 function clip(text: string, max: number): string {
   return text.length > max ? `${text.slice(0, max)}… (${text.length - max} more characters)` : text;
+}
+
+/** The command as the model reads it; instructions.md says what "Resume:" means. */
+function commandLine(command: string, resumed: boolean | undefined): string {
+  return resumed ? `Resume: ${command.trim()}` : command.trim();
 }
 
 function time(ms: number): string {
@@ -58,7 +67,7 @@ export function formatEarlierTurns(turns: readonly EarlierTurn[]): string {
   const shown = turns.slice(-MAX_EARLIER_TURNS);
   const skipped = turns.length - shown.length;
   const blocks = shown.map((turn, i) => {
-    const lines = [`<turn number="${skipped + i + 1}" time="${time(turn.startedAt)}">`, `<command>${turn.command}</command>`];
+    const lines = [`<turn number="${skipped + i + 1}" time="${time(turn.startedAt)}">`, `<command>${commandLine(turn.command, turn.resumed)}</command>`];
     if (turn.actions.length) {
       lines.push('<actions>');
       for (const action of turn.actions) {
@@ -87,7 +96,7 @@ export function streamBrowserCommand(
     variables: {
       thread_history: formatEarlierTurns(input.earlierTurns),
       snapshot: input.snapshot,
-      command: input.command.trim(),
+      command: commandLine(input.command, input.resumed),
     },
   });
 }

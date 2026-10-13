@@ -19,7 +19,7 @@ import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { EFFORT_OPTIONS, MODELS } from '@/ai/models';
 import { isDetachedPage } from '@/lib/detached-window';
-import type { RunUsage } from '@/lib/run';
+import { canResume, type RunUsage } from '@/lib/run';
 import { getKeyStatus, rpc, type KeyStatus } from '@/lib/rpc';
 import { APPROVAL_MODE_OPTIONS, DEFAULT_SETTINGS, getSettings, onSettingsChanged, updateSettings, type Settings } from '@/lib/settings';
 import { useRun } from '@/lib/use-run';
@@ -155,6 +155,7 @@ export default function App() {
     clearError,
     needsUnlock,
     start,
+    resume,
     resumeAfterUnlock,
     cancelUnlock,
     approve,
@@ -186,6 +187,8 @@ export default function App() {
   // A command is running in a thread other than the one shown; only one runs at a time.
   const busyElsewhere = runningThreadId !== null && runningThreadId !== thread?.id;
   const turns = thread?.turns ?? [];
+  const lastTurn = turns.at(-1);
+  const resumable = !runningThreadId && lastTurn && canResume(lastTurn) ? lastTurn.id : null;
   // The usage meter follows the command in progress, else the thread's last one.
   const latest = run ?? turns.at(-1) ?? null;
 
@@ -266,7 +269,7 @@ export default function App() {
               {turns.length || run ? (
                 <>
                   {turns.map((turn) => (
-                    <RunView key={turn.id} run={turn} onApprove={approve} />
+                    <RunView key={turn.id} run={turn} onApprove={approve} onResume={turn.id === resumable ? resume : undefined} />
                   ))}
                   {run && <RunView run={run} onApprove={approve} />}
                 </>

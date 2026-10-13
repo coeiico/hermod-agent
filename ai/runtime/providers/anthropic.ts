@@ -111,7 +111,7 @@ export class AnthropicModel implements Model {
         // Not an API error: the SDK could not parse a streamed tool input.
         if (attempt >= MAX_MALFORMED_INPUT_RETRIES) throw new ModelError(`The model kept sending malformed tool input: ${userMessage(err)}`, { cause: err });
         console.warn('[hermod] malformed tool input, re-sending the response', err);
-        yield { type: 'response-discarded', reason: 'Malformed tool input from the model; retrying.' };
+        yield { type: 'response-discarded', reason: 'the model sent malformed tool input, so the response is being retried' };
       }
     }
   }

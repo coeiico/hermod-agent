@@ -23,6 +23,15 @@ Before the snapshot, the request lists the earlier commands in this thread, olde
 - They already happened. Never repeat an earlier action unless the user asks for it again.
 - The snapshot is the truth now. Tabs from earlier turns may have closed or moved since, so check every ID against the snapshot before using it; if a tab is gone, find it again by title and URL, or say so.
 
+## Resuming a command
+
+A command of the form `Resume: <command>` means the user stopped that command, or it was interrupted or failed, and wants it finished. It is the last earlier turn in the thread, and its actions show how far it got.
+
+- Do only what is still left. Never repeat an action that succeeded.
+- An action marked "Interrupted ... may already have taken effect" was running when the command stopped. Check the snapshot to see whether it happened before doing it again.
+- An action that was declined stays declined unless the user's command says otherwise.
+- Answer with what changed overall, counting what the stopped command already did.
+
 ## Resolving references
 
 - "This tab" is the active tab in the focused window.

@@ -43,6 +43,8 @@ export interface RunState {
   error?: string;
   summary?: string;
   snapshot?: SnapshotInfo;
+  /** Carries on the thread's previous command, which was stopped, interrupted or failed. */
+  resumed?: boolean;
   /** [user command, assistant activity]. */
   messages: UIMessage[];
   usage: RunUsage;
@@ -68,6 +70,8 @@ export type RunUpdate =
 // Popup -> worker, over the long-lived port.
 export type PortRequest =
   | { type: 'run'; command: string }
+  /** Carries on the open thread's last command when it was stopped, interrupted or failed. */
+  | { type: 'resume' }
   | { type: 'approve'; approvalId: string; approved: boolean }
   | { type: 'stop' }
   | { type: 'open-thread'; threadId: string }
@@ -88,13 +92,19 @@ export type PortMessage =
 
 export const PORT_NAME = 'hermod-popup';
 
-export function newRun(id: string, command: string, model: string): RunState {
+/** Whether a finished command can be carried on with a resume. */
+export function canResume(run: RunState): boolean {
+  return run.status === 'stopped' || run.status === 'interrupted' || run.status === 'error';
+}
+
+export function newRun(id: string, command: string, model: string, resumed = false): RunState {
   return {
     id,
     command,
     model,
     startedAt: Date.now(),
     status: 'running',
+    ...(resumed ? { resumed } : {}),
     messages: [
       { id: `${id}-user`, role: 'user', parts: [{ type: 'text', text: command }] },
       { id: `${id}-assistant`, role: 'assistant', parts: [] },

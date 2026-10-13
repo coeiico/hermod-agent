@@ -18,9 +18,10 @@ export class RunController {
   constructor(
     command: string,
     model: string,
+    resumed: boolean,
     private broadcast: (runId: string, update: RunUpdate) => void,
   ) {
-    this.state = newRun(crypto.randomUUID(), command, model);
+    this.state = newRun(crypto.randomUUID(), command, model, resumed);
   }
 
   private emit(update: RunUpdate) {
@@ -137,14 +138,18 @@ export class RunController {
     this.approvals.get(approvalId)?.(approved);
   }
 
-  /** Marks tool calls that never got a result (e.g. after a stop or error). */
-  failDanglingTools(errorText: string) {
+  /**
+   * Marks tool calls that never got a result (after a stop or error), saying
+   * whether each one had started: a started browser call cannot be cancelled,
+   * so it may have taken effect.
+   */
+  failDanglingTools(reason: string) {
     for (const part of this.state.messages[1]?.parts ?? []) {
-      if (
-        part.type === 'dynamic-tool' &&
-        (part.state === 'input-streaming' || part.state === 'input-available' || part.state === 'approval-responded')
-      ) {
-        this.emit({ type: 'tool-error', toolCallId: part.toolCallId, errorText });
+      if (part.type !== 'dynamic-tool') continue;
+      if (part.state === 'input-streaming') {
+        this.emit({ type: 'tool-error', toolCallId: part.toolCallId, errorText: `Not run: ${reason}.` });
+      } else if (part.state === 'input-available' || part.state === 'approval-responded') {
+        this.emit({ type: 'tool-error', toolCallId: part.toolCallId, errorText: `Interrupted: ${reason}. It may already have taken effect.` });
       }
     }
   }

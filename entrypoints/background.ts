@@ -7,7 +7,7 @@ import { AnthropicModel, createAnthropicClient } from '@/ai/runtime/providers/an
 import { buildSnapshot } from '@/ai/tools/snapshot';
 import * as keystore from '@/lib/keystore';
 import type { RpcRequest, RpcResponse } from '@/lib/rpc';
-import { PORT_NAME, type PortMessage, type PortRequest, type RunState, type RunUpdate } from '@/lib/run';
+import { canResume, PORT_NAME, type PortMessage, type PortRequest, type RunState, type RunUpdate } from '@/lib/run';
 import { RunController } from '@/lib/run-controller';
 import { popOut, reattach, watchDetachedWindow } from '@/lib/detached-window';
 import { getSettings } from '@/lib/settings';
@@ -105,8 +105,17 @@ export default defineBackground({
     async function handlePortRequest(port: Browser.runtime.Port, msg: PortRequest) {
       switch (msg.type) {
         case 'run':
-          await startRun(port, msg.command);
+          await startRun(port, msg.command, false);
           break;
+        case 'resume': {
+          const last = openThread?.turns.at(-1);
+          if (!last || !canResume(last)) {
+            post(port, { type: 'error', error: 'There is no stopped command in this thread to resume.' });
+            return;
+          }
+          await startRun(port, last.command, true);
+          break;
+        }
         case 'approve':
           active?.ctrl.answerApproval(msg.approvalId, msg.approved);
           break;
@@ -132,7 +141,7 @@ export default defineBackground({
       }
     }
 
-    async function startRun(port: Browser.runtime.Port, command: string) {
+    async function startRun(port: Browser.runtime.Port, command: string, resumed: boolean) {
       const text = command.trim();
       if (!text) return;
       if (active) {
@@ -156,7 +165,7 @@ export default defineBackground({
         openThread = thread;
         await threads.setActiveThreadId(thread.id);
       }
-      const ctrl = new RunController(text, settings.model, broadcast);
+      const ctrl = new RunController(text, settings.model, resumed, broadcast);
       const abort = new AbortController();
       active = { ctrl, abort, threadId: thread.id };
       broadcastState();
@@ -173,18 +182,18 @@ export default defineBackground({
         const snapshot = await buildSnapshot();
         ctrl.snapshot(snapshot);
         const earlierTurns = thread.turns.map(threads.toEarlierTurn);
-        const events = streamBrowserCommand(ctx, { snapshot: snapshot.text, command: text, earlierTurns }, {
+        const events = streamBrowserCommand(ctx, { snapshot: snapshot.text, command: text, resumed, earlierTurns }, {
           model: new AnthropicModel(createAnthropicClient(apiKey)),
           overrides: { model: settings.model, effort: settings.effort, cache_ttl: settings.cacheTtl },
         });
         for await (const event of events) ctrl.handle(event);
       } catch (err) {
         if (err instanceof RunCancelled || abort.signal.aborted) {
-          ctrl.failDanglingTools('Stopped by the user.');
+          ctrl.failDanglingTools('stopped by the user');
           ctrl.end('stopped', { summary: 'Stopped.' });
         } else {
           console.error('[hermod] command failed', err instanceof Error ? err.message : err);
-          ctrl.failDanglingTools('Not run: the command failed.');
+          ctrl.failDanglingTools('the command failed');
           ctrl.end('error', { error: err instanceof Error ? err.message : String(err) });
         }
       } finally {

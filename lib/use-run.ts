@@ -15,7 +15,8 @@ export function useRun() {
   // Messages sent while the port is down (the worker was idle-killed and is
   // restarting) wait here and go out as soon as it reconnects.
   const outbox = useRef<PortRequest[]>([]);
-  const pendingCommand = useRef<string | null>(null);
+  // The run or resume request waiting on an unlock, sent again once unlocked.
+  const pending = useRef<PortRequest | null>(null);
 
   useEffect(() => {
     let disposed = false;
@@ -30,7 +31,7 @@ export function useRun() {
             setThread(msg.thread);
             setRun(msg.run);
             setRunningThreadId(msg.runningThreadId);
-            if (msg.run?.status === 'running' && msg.run.command === pendingCommand.current) pendingCommand.current = null;
+            if (msg.runningThreadId) pending.current = null;
             break;
           case 'update':
             setRun((r) => (r && r.id === msg.runId ? applyUpdate(r, msg.update) : r));
@@ -40,7 +41,7 @@ export function useRun() {
             break;
           case 'error':
             setError(msg.error);
-            pendingCommand.current = null;
+            pending.current = null;
             break;
         }
       });
@@ -74,24 +75,28 @@ export function useRun() {
     }
   }, []);
 
-  const start = useCallback(
-    (command: string) => {
+  /** Sends a request that may need the key unlocked first. */
+  const sendRun = useCallback(
+    (msg: PortRequest) => {
       setError(null);
-      pendingCommand.current = command;
-      send({ type: 'run', command });
+      pending.current = msg;
+      send(msg);
     },
     [send],
   );
 
-  /** Call after a successful unlock to send the command that was waiting. */
+  const start = useCallback((command: string) => sendRun({ type: 'run', command }), [sendRun]);
+  const resume = useCallback(() => sendRun({ type: 'resume' }), [sendRun]);
+
+  /** Call after a successful unlock to send the request that was waiting. */
   const resumeAfterUnlock = useCallback(() => {
     setNeedsUnlock(false);
-    if (pendingCommand.current) send({ type: 'run', command: pendingCommand.current });
+    if (pending.current) send(pending.current);
   }, [send]);
 
   const cancelUnlock = useCallback(() => {
     setNeedsUnlock(false);
-    pendingCommand.current = null;
+    pending.current = null;
   }, []);
 
   const approve = useCallback(
@@ -111,6 +116,7 @@ export function useRun() {
     clearError: () => setError(null),
     needsUnlock,
     start,
+    resume,
     resumeAfterUnlock,
     cancelUnlock,
     approve,

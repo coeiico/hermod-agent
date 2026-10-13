@@ -101,6 +101,7 @@ export function toEarlierTurn(run: RunState): EarlierTurn {
     .trim();
   return {
     command: run.command,
+    resumed: run.resumed,
     startedAt: run.startedAt,
     status: run.status === 'running' ? 'interrupted' : run.status,
     actions,
