@@ -76,8 +76,12 @@ export type PortRequest =
 
 // Worker -> popup, over the long-lived port.
 export type PortMessage =
-  /** The open thread's finished turns, and the command in progress (if any). Null thread: a new, empty one. */
-  | { type: 'state'; thread: Thread | null; run: RunState | null }
+  /**
+   * The open thread's finished turns, and its command in progress (if any).
+   * Null thread: a new, empty one. `runningThreadId`: the thread whose command
+   * is running, which may not be the open one.
+   */
+  | { type: 'state'; thread: Thread | null; run: RunState | null; runningThreadId: string | null }
   | { type: 'update'; runId: string; update: RunUpdate }
   | { type: 'needs-unlock' }
   | { type: 'error'; error: string };

@@ -74,11 +74,13 @@ function HeaderButton({ label, onClick, children }: { label: string; onClick: ()
 function Composer({
   running,
   disabled,
+  placeholder,
   onSubmit,
   onStop,
 }: {
   running: boolean;
   disabled: boolean;
+  placeholder: string;
   onSubmit: (text: string) => void;
   onStop: () => void;
 }) {
@@ -94,7 +96,7 @@ function Composer({
           autoFocus
           disabled={disabled}
           className="min-h-12"
-          placeholder={disabled ? 'Add an API key in Settings to start' : 'Tell Hermod what to do with your tabs…'}
+          placeholder={placeholder}
         />
       </PromptInputBody>
       <PromptInputFooter className="justify-end">
@@ -161,6 +163,7 @@ export default function App() {
     newThread,
     deleteThread,
     running,
+    runningThreadId,
   } = useRun();
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [keyStatus, setKeyStatus] = useState<KeyStatus | null>(null);
@@ -180,6 +183,8 @@ export default function App() {
   };
 
   const noKey = keyStatus !== null && !keyStatus.hasVault;
+  // A command is running in a thread other than the one shown; only one runs at a time.
+  const busyElsewhere = runningThreadId !== null && runningThreadId !== thread?.id;
   const turns = thread?.turns ?? [];
   // The usage meter follows the command in progress, else the thread's last one.
   const latest = run ?? turns.at(-1) ?? null;
@@ -191,7 +196,7 @@ export default function App() {
           <span className="font-display font-semibold text-[17px] text-ink leading-[22px] tracking-tight">Hermod</span>
           {thread && view === 'run' && <span className="min-w-0 truncate pl-1 text-ink-3 text-sm">{thread.title}</span>}
           <div className="ml-auto flex shrink-0 items-center gap-0.5">
-            {!running && (thread || view === 'threads') && (
+            {(thread || view === 'threads') && (
               <HeaderButton
                 label="New thread"
                 onClick={() => {
@@ -243,7 +248,7 @@ export default function App() {
           <div className="min-h-0 flex-1 overflow-y-auto rounded-[12px] border border-line bg-surface">
             <ThreadList
               activeId={thread?.id ?? null}
-              busy={running}
+              runningId={runningThreadId}
               onOpen={(id) => {
                 openThread(id);
                 setView('run');
@@ -282,7 +287,7 @@ export default function App() {
                 <ConversationEmptyState
                   className="pt-16"
                   icon={<SparklesIcon className="size-6 text-ink-3" />}
-                  title="What should I do with your tabs?"
+                  title="What shall I do next?"
                   description="Move, close, sort, find or reopen tabs and windows in plain words. Try a suggestion below."
                 />
               )}
@@ -302,8 +307,35 @@ export default function App() {
               </AlertDescription>
             </Alert>
           )}
-          {!running && !noKey && view === 'run' && <SuggestionRow onPick={submit} />}
-          <Composer running={running} disabled={noKey} onSubmit={submit} onStop={stop} />
+          {busyElsewhere && (
+            <div className="flex items-center justify-between gap-2 rounded-[10px] border border-line bg-surface px-3 py-1.5 text-ink-2 text-sm">
+              <span>A command is running in another thread.</span>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  openThread(runningThreadId);
+                  setView('run');
+                }}
+              >
+                Go to it
+              </Button>
+            </div>
+          )}
+          {!running && !busyElsewhere && !noKey && view === 'run' && <SuggestionRow onPick={submit} />}
+          <Composer
+            running={running}
+            disabled={noKey || busyElsewhere}
+            placeholder={
+              noKey
+                ? 'Add an API key in Settings to start'
+                : busyElsewhere
+                  ? 'Wait for the other command to finish, or stop it there'
+                  : 'Tell Hermod what’s next…'
+            }
+            onSubmit={submit}
+            onStop={stop}
+          />
           <ComposerBar
             settings={settings}
             usage={latest && latest.usage.rounds > 0 && view === 'run' ? { usage: latest.usage, modelId: latest.model } : null}

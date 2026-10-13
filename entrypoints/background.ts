@@ -28,7 +28,8 @@ export default defineBackground({
     const ports = new Set<Browser.runtime.Port>();
     let active: { ctrl: RunController; abort: AbortController; threadId: string } | null = null;
     // The thread the popup shows and the next command joins. Null: a new thread,
-    // created when its first command starts.
+    // created when its first command starts. It may differ from the running
+    // command's thread: the user can read other threads while one runs.
     let openThread: threads.Thread | null = null;
 
     void keystore.initKeystore();
@@ -93,7 +94,8 @@ export default defineBackground({
     });
 
     function stateMessage(): PortMessage {
-      return { type: 'state', thread: openThread, run: active?.ctrl.state ?? null };
+      const run = active && active.threadId === openThread?.id ? active.ctrl.state : null;
+      return { type: 'state', thread: openThread, run, runningThreadId: active?.threadId ?? null };
     }
 
     function broadcastState() {
@@ -113,10 +115,6 @@ export default defineBackground({
           break;
         case 'open-thread':
         case 'new-thread': {
-          if (active) {
-            post(port, { type: 'error', error: 'Wait for the current command to finish, or stop it, before switching threads.' });
-            return;
-          }
           openThread = msg.type === 'open-thread' ? ((await threads.getThread(msg.threadId)) ?? null) : null;
           await threads.setActiveThreadId(openThread?.id ?? null);
           broadcastState();
@@ -138,7 +136,8 @@ export default defineBackground({
       const text = command.trim();
       if (!text) return;
       if (active) {
-        post(port, { type: 'error', error: 'A command is already running. Stop it first.' });
+        const where = active.threadId === openThread?.id ? '' : ' in another thread';
+        post(port, { type: 'error', error: `A command is already running${where}. Wait for it to finish, or stop it.` });
         return;
       }
       if (!(await keystore.hasVault())) {

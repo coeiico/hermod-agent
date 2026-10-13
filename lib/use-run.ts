@@ -8,6 +8,7 @@ import type { Thread } from './threads';
 export function useRun() {
   const [thread, setThread] = useState<Thread | null>(null);
   const [run, setRun] = useState<RunState | null>(null);
+  const [runningThreadId, setRunningThreadId] = useState<string | null>(null);
   const [needsUnlock, setNeedsUnlock] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const portRef = useRef<Browser.runtime.Port | null>(null);
@@ -28,6 +29,7 @@ export function useRun() {
           case 'state':
             setThread(msg.thread);
             setRun(msg.run);
+            setRunningThreadId(msg.runningThreadId);
             if (msg.run?.status === 'running' && msg.run.command === pendingCommand.current) pendingCommand.current = null;
             break;
           case 'update':
@@ -116,6 +118,8 @@ export function useRun() {
     openThread,
     newThread,
     deleteThread,
+    /** A command is running in the open thread. */
     running: run?.status === 'running',
+    runningThreadId,
   };
 }
