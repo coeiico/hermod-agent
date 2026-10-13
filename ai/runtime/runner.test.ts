@@ -65,6 +65,19 @@ const remove = defineTool({
   run: deleteRun,
 });
 
+const purgeRun = vi.fn(async () => 'purged');
+
+const purge = defineTool({
+  name: 'purge',
+  title: 'Purge',
+  effect: 'destructive',
+  alwaysAsk: true,
+  description: 'Purge things for good.',
+  input: z.object({ id: z.number() }),
+  confirm: ({ id }) => `Purge ${id} for good?`,
+  run: purgeRun,
+});
+
 const slow = defineTool({
   name: 'slow',
   title: 'Slow',
@@ -75,12 +88,22 @@ const slow = defineTool({
   run: () => new Promise<string>(() => {}),
 });
 
+const hang = defineTool({
+  name: 'hang',
+  title: 'Hang',
+  effect: 'write',
+  description: 'Never finishes, well within its timeout.',
+  input: z.object({}),
+  timeoutMs: 60_000,
+  run: () => new Promise<string>(() => {}),
+});
+
 const agent = defineAgent({
   configYaml: 'id: test_agent.v1\nmodel: claude-test\neffort: low\nmax_tokens: 1000',
   system: '# Behavior\n\nBe helpful.',
   instructions: '# Role\n\nTester.\n\n# Objective\n\nTest.',
   task: '# Task\n\n{{ command }}',
-  tools: [move, remove, slow],
+  tools: [move, remove, purge, slow, hang],
 });
 
 function context(
@@ -179,6 +202,18 @@ describe('streamRun', () => {
     expect(deleteRun).toHaveBeenCalledOnce();
   });
 
+  it('still asks before an alwaysAsk tool in never mode', async () => {
+    purgeRun.mockClear();
+    const model = new ScriptedModel([
+      () => message([toolUse('t1', 'purge', { id: 7 })], 'tool_use'),
+      () => message([text('Left it.')], 'end_turn'),
+    ]);
+    const asked: string[] = [];
+    await collect(streamRun(agent, context({ approval: 'never', confirm: (q) => (asked.push(q), false) }), { model, variables: { command: 'x' } }));
+    expect(asked).toEqual(['Purge 7 for good?']);
+    expect(purgeRun).not.toHaveBeenCalled();
+  });
+
   it('turns a tool timeout into an error result', async () => {
     const model = new ScriptedModel([
       () => message([toolUse('t1', 'slow', {})], 'tool_use'),
@@ -218,6 +253,20 @@ describe('streamRun', () => {
       },
     ]);
     await expect(collect(streamRun(agent, context({ cancel }), { model, variables: { command: 'x' } }))).rejects.toBeInstanceOf(RunCancelled);
+  });
+
+  it('stops at once during a tool call that has not finished', async () => {
+    const cancel = new AbortController();
+    const model = new ScriptedModel([() => message([toolUse('t1', 'hang', {})], 'tool_use')]);
+    const run = collect(
+      (async function* () {
+        for await (const event of streamRun(agent, context({ approval: 'never', cancel }), { model, variables: { command: 'x' } })) {
+          if (event.type === 'tool-call-started') setTimeout(() => cancel.abort(), 5);
+          yield event;
+        }
+      })(),
+    );
+    await expect(run).rejects.toBeInstanceOf(RunCancelled);
   });
 
   it('fails the render when task.md names a variable that was not given', async () => {

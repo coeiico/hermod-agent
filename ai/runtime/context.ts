@@ -21,8 +21,8 @@ export const DEFAULT_LIMITS: Limits = {
 
 /**
  * When the user is asked before a tool runs. `ask`: before anything that changes
- * the browser. `auto`: only when a destructive tool's own check asks (closing
- * many tabs, say). `never`: not at all.
+ * the browser. `auto`: only when a tool's own check asks (closing many tabs, say).
+ * `never`: only for `alwaysAsk` tools (deleting bookmarks or history, downloads).
  */
 export type ApprovalMode = 'ask' | 'auto' | 'never';
 
