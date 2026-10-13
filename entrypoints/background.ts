@@ -1,27 +1,37 @@
 // Background service worker: owns the API key, runs the tool loop, and
 // streams progress to the popup. The popup is only an interface; it can close
 // at any time (moving tabs steals its focus) without stopping a command.
-import { createClient, runAgent, StopRun } from '@/lib/agent';
+import { streamBrowserCommand } from '@/ai/agents/interactive/browser_command/agent';
+import { createRunContext, RunCancelled } from '@/ai/runtime/context';
+import { AnthropicModel, createAnthropicClient } from '@/ai/runtime/providers/anthropic';
+import { buildSnapshot } from '@/ai/tools/snapshot';
 import * as keystore from '@/lib/keystore';
 import type { RpcRequest, RpcResponse } from '@/lib/rpc';
-import { PORT_NAME, toRecord, type PortMessage, type PortRequest, type RunEvent, type RunRecord, type RunState } from '@/lib/run';
+import { PORT_NAME, type PortMessage, type PortRequest, type RunState, type RunUpdate } from '@/lib/run';
 import { RunController } from '@/lib/run-controller';
 import { getSettings } from '@/lib/settings';
+import * as threads from '@/lib/threads';
 import { WrongPassphraseError } from '@/lib/vault';
 
+// The command in progress, so a restarted worker can file it as interrupted.
 const CURRENT_RUN_KEY = 'currentRun';
-const HISTORY_KEY = 'runHistory';
-const HISTORY_LIMIT = 25;
+
+interface CurrentRun {
+  threadId: string;
+  run: RunState;
+}
 
 export default defineBackground({
   type: 'module',
   main() {
     const ports = new Set<Browser.runtime.Port>();
-    let active: { ctrl: RunController; abort: AbortController } | null = null;
-    let lastRun: RunState | null = null;
+    let active: { ctrl: RunController; abort: AbortController; threadId: string } | null = null;
+    // The thread the popup shows and the next command joins. Null: a new thread,
+    // created when its first command starts.
+    let openThread: threads.Thread | null = null;
 
     void keystore.initKeystore();
-    const recovered = recoverInterruptedRun();
+    const recovered = recover();
 
     // ------------------------------------------------------------ persistence
 
@@ -30,35 +40,27 @@ export default defineBackground({
       if (persistTimer) return;
       persistTimer = setTimeout(() => {
         persistTimer = undefined;
-        const run = active?.ctrl.state ?? lastRun;
-        if (run) void browser.storage.session.set({ [CURRENT_RUN_KEY]: run });
+        if (active) {
+          const current: CurrentRun = { threadId: active.threadId, run: active.ctrl.state };
+          void browser.storage.session.set({ [CURRENT_RUN_KEY]: current });
+        }
       }, 400);
     }
 
-    async function getHistory(): Promise<RunRecord[]> {
-      const stored = await browser.storage.session.get(HISTORY_KEY);
-      return (stored[HISTORY_KEY] as RunRecord[] | undefined) ?? [];
-    }
-
-    async function pushHistory(run: RunState) {
-      const history = (await getHistory()).filter((r) => r.id !== run.id);
-      history.unshift(toRecord(run));
-      await browser.storage.session.set({ [HISTORY_KEY]: history.slice(0, HISTORY_LIMIT) });
-    }
-
-    /** If the worker was killed mid-command, show that run as interrupted. */
-    async function recoverInterruptedRun() {
+    /** Reopens the last open thread, and files a command the worker died during as interrupted. */
+    async function recover() {
       const stored = await browser.storage.session.get(CURRENT_RUN_KEY);
-      const run = stored[CURRENT_RUN_KEY] as RunState | undefined;
-      if (!run) return;
-      if (run.status === 'running') {
-        const fixed: RunState = { ...run, status: 'interrupted', error: 'The background worker restarted before this command finished.', endedAt: Date.now() };
-        await browser.storage.session.set({ [CURRENT_RUN_KEY]: fixed });
-        await pushHistory(fixed);
-        lastRun = fixed;
-      } else {
-        lastRun = run;
+      const current = stored[CURRENT_RUN_KEY] as CurrentRun | undefined;
+      if (current) {
+        const run: RunState =
+          current.run.status === 'running'
+            ? { ...current.run, status: 'interrupted', error: 'The background worker restarted before this command finished.', endedAt: Date.now() }
+            : current.run;
+        await threads.appendTurn(current.threadId, run);
+        await browser.storage.session.remove(CURRENT_RUN_KEY);
       }
+      const activeId = await threads.getActiveThreadId();
+      openThread = activeId ? ((await threads.getThread(activeId)) ?? null) : null;
     }
 
     // ------------------------------------------------------------ popup port
@@ -71,8 +73,8 @@ export default defineBackground({
       }
     }
 
-    function broadcast(runId: string, event: RunEvent) {
-      for (const port of ports) post(port, { type: 'event', runId, event });
+    function broadcast(runId: string, update: RunUpdate) {
+      for (const port of ports) post(port, { type: 'update', runId, update });
       persistSoon();
     }
 
@@ -85,8 +87,16 @@ export default defineBackground({
       port.onMessage.addListener((msg: PortRequest) => {
         void recovered.then(() => handlePortRequest(port, msg));
       });
-      void recovered.then(() => post(port, { type: 'state', run: active?.ctrl.state ?? lastRun }));
+      void recovered.then(() => post(port, stateMessage()));
     });
+
+    function stateMessage(): PortMessage {
+      return { type: 'state', thread: openThread, run: active?.ctrl.state ?? null };
+    }
+
+    function broadcastState() {
+      for (const port of ports) post(port, stateMessage());
+    }
 
     async function handlePortRequest(port: Browser.runtime.Port, msg: PortRequest) {
       switch (msg.type) {
@@ -98,6 +108,26 @@ export default defineBackground({
           break;
         case 'stop':
           active?.abort.abort();
+          break;
+        case 'open-thread':
+        case 'new-thread': {
+          if (active) {
+            post(port, { type: 'error', error: 'Wait for the current command to finish, or stop it, before switching threads.' });
+            return;
+          }
+          openThread = msg.type === 'open-thread' ? ((await threads.getThread(msg.threadId)) ?? null) : null;
+          await threads.setActiveThreadId(openThread?.id ?? null);
+          broadcastState();
+          break;
+        }
+        case 'delete-thread':
+          if (active?.threadId === msg.threadId) {
+            post(port, { type: 'error', error: "A command is running in that thread. Stop it before deleting the thread." });
+            return;
+          }
+          await threads.deleteThread(msg.threadId);
+          if (openThread?.id === msg.threadId) openThread = null;
+          broadcastState();
           break;
       }
     }
@@ -120,26 +150,35 @@ export default defineBackground({
       }
 
       const settings = await getSettings();
+      const thread = openThread ?? (await threads.createThread(text));
+      if (!openThread) {
+        openThread = thread;
+        await threads.setActiveThreadId(thread.id);
+      }
       const ctrl = new RunController(text, settings.model, broadcast);
       const abort = new AbortController();
-      active = { ctrl, abort };
-      for (const p of ports) post(p, { type: 'state', run: ctrl.state });
+      active = { ctrl, abort, threadId: thread.id };
+      broadcastState();
 
       // Extension API calls reset the service worker's idle timer, so a cheap
       // call every 20s keeps it alive while waiting on the user (confirmations).
       const keepAlive = setInterval(() => void browser.runtime.getPlatformInfo(), 20_000);
       try {
-        await runAgent({
-          apiKey,
-          command: text,
-          model: settings.model,
-          effort: settings.effort,
-          cacheTtl: settings.cacheTtl,
-          ctrl,
-          signal: abort.signal,
+        const ctx = createRunContext({
+          cancel: abort.signal,
+          approval: settings.approvalMode,
+          confirm: (request) => ctrl.requestApproval(request.callId, request.question, request.signal),
         });
+        const snapshot = await buildSnapshot();
+        ctrl.snapshot(snapshot);
+        const earlierTurns = thread.turns.map(threads.toEarlierTurn);
+        const events = streamBrowserCommand(ctx, { snapshot: snapshot.text, command: text, earlierTurns }, {
+          model: new AnthropicModel(createAnthropicClient(apiKey)),
+          overrides: { model: settings.model, effort: settings.effort, cache_ttl: settings.cacheTtl },
+        });
+        for await (const event of events) ctrl.handle(event);
       } catch (err) {
-        if (err instanceof StopRun || abort.signal.aborted) {
+        if (err instanceof RunCancelled || abort.signal.aborted) {
           ctrl.failDanglingTools('Stopped by the user.');
           ctrl.end('stopped', { summary: 'Stopped.' });
         } else {
@@ -150,10 +189,11 @@ export default defineBackground({
       } finally {
         clearInterval(keepAlive);
         if (!ctrl.finished) ctrl.end('done', { summary: 'Done.' });
-        lastRun = ctrl.state;
+        const updated = await threads.appendTurn(thread.id, ctrl.state);
+        if (openThread?.id === thread.id) openThread = updated ?? null;
         active = null;
-        await browser.storage.session.set({ [CURRENT_RUN_KEY]: lastRun });
-        await pushHistory(lastRun);
+        await browser.storage.session.remove(CURRENT_RUN_KEY);
+        broadcastState();
       }
     }
 
@@ -214,18 +254,14 @@ export default defineBackground({
             }
           }
           try {
-            const page = await createClient(apiKey).models.list({ limit: 20 });
+            const page = await createAnthropicClient(apiKey).models.list({ limit: 20 });
             return { ok: true, models: page.data.map((m) => m.id) };
           } catch (err) {
             return { ok: false, error: err instanceof Error ? err.message : String(err) };
           }
         }
-        case 'history':
-          return { ok: true, history: await getHistory() };
-        case 'clear-history':
-          await browser.storage.session.remove([HISTORY_KEY, CURRENT_RUN_KEY]);
-          lastRun = null;
-          return { ok: true };
+        case 'list-threads':
+          return { ok: true, threads: await threads.listThreads() };
       }
     }
   },

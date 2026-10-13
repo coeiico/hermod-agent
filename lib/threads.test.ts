@@ -1,0 +1,65 @@
+import { beforeEach, describe, expect, it } from 'vitest';
+import { fakeBrowser } from 'wxt/testing/fake-browser';
+import { applyUpdate, newRun, type RunState } from './run';
+import * as threads from './threads';
+
+/** A finished run: one successful tool call, one declined, then an answer. */
+function finishedRun(command: string): RunState {
+  let run = newRun(crypto.randomUUID(), command, 'claude-haiku-5-5');
+  const steps: Parameters<typeof applyUpdate>[1][] = [
+    { type: 'snapshot', snapshot: { text: 'W1 focused …', windows: 1, tabs: 3, displays: 1 } },
+    { type: 'tool-input-start', toolCallId: 't1', toolName: 'move_tabs', title: 'Move tabs' },
+    { type: 'tool-input-available', toolCallId: 't1', input: { tabIds: [5], windowId: 1 } },
+    { type: 'tool-output', toolCallId: 't1', output: 'Moved 1 tab to W1.' },
+    { type: 'tool-input-start', toolCallId: 't2', toolName: 'close_tabs', title: 'Close tabs' },
+    { type: 'tool-input-available', toolCallId: 't2', input: { tabIds: [6, 7, 8, 9] } },
+    { type: 'tool-approval-request', toolCallId: 't2', approvalId: 'a1', reason: 'Close 4 tabs?' },
+    { type: 'tool-approval-response', toolCallId: 't2', approved: false },
+    { type: 'text-start', index: 2 },
+    { type: 'delta', index: 2, delta: 'Moved it; left the others open.' },
+    { type: 'run-end', status: 'done' },
+  ];
+  for (const step of steps) run = applyUpdate(run, step);
+  return run;
+}
+
+beforeEach(() => fakeBrowser.reset());
+
+describe('thread store', () => {
+  it('creates a thread, appends turns without snapshot text, and lists newest first', async () => {
+    const first = await threads.createThread('put my youtube tabs in a new window');
+    const second = await threads.createThread('x'.repeat(80));
+    const run = finishedRun('close those');
+    const saved = await threads.appendTurn(first.id, run);
+
+    expect(saved?.turns).toHaveLength(1);
+    expect(saved?.turns[0]?.snapshot).toEqual({ text: '', windows: 1, tabs: 3, displays: 1 });
+    const list = await threads.listThreads();
+    expect(list.map((t) => t.id)).toEqual([first.id, second.id]);
+    expect(list[0]?.turnCount).toBe(1);
+    expect(list[1]?.title).toHaveLength(60);
+  });
+
+  it('deleting the open thread clears it', async () => {
+    const t = await threads.createThread('a');
+    await threads.setActiveThreadId(t.id);
+    await threads.deleteThread(t.id);
+    expect(await threads.getThread(t.id)).toBeUndefined();
+    expect(await threads.getActiveThreadId()).toBeNull();
+    expect(await threads.listThreads()).toEqual([]);
+  });
+});
+
+describe('toEarlierTurn', () => {
+  it('keeps each action with its outcome, and the answer', () => {
+    expect(threads.toEarlierTurn(finishedRun('tidy up'))).toMatchObject({
+      command: 'tidy up',
+      status: 'done',
+      actions: [
+        { tool: 'move_tabs', input: { tabIds: [5], windowId: 1 }, outcome: 'ok', result: 'Moved 1 tab to W1.' },
+        { tool: 'close_tabs', outcome: 'declined' },
+      ],
+      answer: 'Moved it; left the others open.',
+    });
+  });
+});

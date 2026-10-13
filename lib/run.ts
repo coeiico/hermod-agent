@@ -1,7 +1,9 @@
-// Shared run model. The worker emits RunEvents; both the worker and the popup
-// fold them into a RunState with applyEvent(), so the popup can attach at any
-// point (it gets the current state, then live events) and render the same
+// Shared run model. The worker emits RunUpdates; both the worker and the popup
+// fold them into a RunState with applyUpdate(), so the popup can attach at any
+// point (it gets the current state, then live updates) and render the same
 // UIMessage-shaped data with AI Elements.
+import type { Snapshot } from '@/ai/tools/snapshot';
+import type { Thread } from './threads';
 import type { DynamicToolUIPart, UIMessage } from 'ai';
 
 export type RunStatus = 'running' | 'done' | 'error' | 'stopped' | 'interrupted';
@@ -29,12 +31,7 @@ export const EMPTY_USAGE: RunUsage = {
   costUSD: 0,
 };
 
-export interface SnapshotInfo {
-  text: string;
-  windows: number;
-  tabs: number;
-  displays: number;
-}
+export type SnapshotInfo = Snapshot;
 
 export interface RunState {
   id: string;
@@ -51,21 +48,7 @@ export interface RunState {
   usage: RunUsage;
 }
 
-/** Compact record kept in storage.session for the "earlier runs" list. Never sent to Claude. */
-export interface RunRecord {
-  id: string;
-  command: string;
-  model: string;
-  startedAt: number;
-  endedAt?: number;
-  status: RunStatus;
-  summary?: string;
-  error?: string;
-  toolCalls: number;
-  usage: RunUsage;
-}
-
-export type RunEvent =
+export type RunUpdate =
   | { type: 'snapshot'; snapshot: SnapshotInfo }
   | { type: 'step-start' }
   | { type: 'reasoning-start'; index: number }
@@ -86,12 +69,16 @@ export type RunEvent =
 export type PortRequest =
   | { type: 'run'; command: string }
   | { type: 'approve'; approvalId: string; approved: boolean }
-  | { type: 'stop' };
+  | { type: 'stop' }
+  | { type: 'open-thread'; threadId: string }
+  | { type: 'new-thread' }
+  | { type: 'delete-thread'; threadId: string };
 
 // Worker -> popup, over the long-lived port.
 export type PortMessage =
-  | { type: 'state'; run: RunState | null }
-  | { type: 'event'; runId: string; event: RunEvent }
+  /** The open thread's finished turns, and the command in progress (if any). Null thread: a new, empty one. */
+  | { type: 'state'; thread: Thread | null; run: RunState | null }
+  | { type: 'update'; runId: string; update: RunUpdate }
   | { type: 'needs-unlock' }
   | { type: 'error'; error: string };
 
@@ -138,7 +125,7 @@ function updateTool(
   );
 }
 
-export function applyEvent(run: RunState, event: RunEvent): RunState {
+export function applyUpdate(run: RunState, event: RunUpdate): RunState {
   switch (event.type) {
     case 'snapshot':
       return { ...run, snapshot: event.snapshot };
@@ -249,20 +236,4 @@ export function applyEvent(run: RunState, event: RunEvent): RunState {
         endedAt: Date.now(),
       };
   }
-}
-
-export function toRecord(run: RunState): RunRecord {
-  const parts = run.messages[1]?.parts ?? [];
-  return {
-    id: run.id,
-    command: run.command,
-    model: run.model,
-    startedAt: run.startedAt,
-    endedAt: run.endedAt,
-    status: run.status,
-    summary: run.summary,
-    error: run.error,
-    toolCalls: parts.filter((p) => p.type === 'dynamic-tool').length,
-    usage: run.usage,
-  };
 }

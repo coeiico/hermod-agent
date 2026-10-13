@@ -35,7 +35,7 @@ export function UnlockDialog({
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onCancel()}>
       <DialogContent className="max-w-[360px]">
-        <form onSubmit={submit} className="flex flex-col gap-4">
+        <form onSubmit={submit} className="flex flex-col gap-3">
           <DialogHeader>
             <DialogTitle>Unlock your API key</DialogTitle>
             <DialogDescription>
@@ -50,7 +50,7 @@ export function UnlockDialog({
             onChange={(e) => setPassphrase(e.target.value)}
             aria-invalid={!!error}
           />
-          {error && <p className="text-destructive text-sm">{error}</p>}
+          {error && <p className="text-bad-ink text-sm">{error}</p>}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onCancel}>
               Cancel

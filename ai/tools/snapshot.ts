@@ -1,7 +1,15 @@
 // Builds the compact browser snapshot sent with every command: one line per
 // tab grouped under its window. Cheap, always-relevant data only; heavy data
 // (page text, history, bookmarks, downloads) is fetched through tools.
-import type { SnapshotInfo } from './run';
+import { z } from 'zod';
+import { defineTool } from '../runtime/tools';
+
+export interface Snapshot {
+  text: string;
+  windows: number;
+  tabs: number;
+  displays: number;
+}
 
 type Tab = Browser.tabs.Tab;
 type Window = Browser.windows.Window;
@@ -135,7 +143,7 @@ async function recentlyClosedSection(now: number): Promise<string[]> {
   }
 }
 
-export async function buildSnapshot(): Promise<SnapshotInfo> {
+export async function buildSnapshot(): Promise<Snapshot> {
   const nowDate = new Date();
   const now = nowDate.getTime();
 
@@ -185,3 +193,14 @@ export async function buildSnapshot(): Promise<SnapshotInfo> {
     displays: displays.count,
   };
 }
+
+export const refreshSnapshot = defineTool({
+  name: 'refresh_snapshot',
+  title: 'Refresh snapshot',
+  effect: 'read',
+  description: 'Get a fresh browser snapshot (same format as the one in the request). Use after actions if you need current IDs, positions or windows.',
+  input: z.object({}),
+  async run() {
+    return (await buildSnapshot()).text;
+  },
+});

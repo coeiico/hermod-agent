@@ -10,7 +10,7 @@ import {
   ContextReasoningUsage,
   ContextTrigger,
 } from '@/components/ai-elements/context';
-import { getModel } from '@/lib/models';
+import { getModel } from '@/ai/models';
 import type { RunUsage } from '@/lib/run';
 import type { LanguageModelUsage } from 'ai';
 
@@ -19,8 +19,8 @@ const compact = new Intl.NumberFormat('en-US', { notation: 'compact' });
 function Row({ label, value }: { label: string; value: number }) {
   return (
     <div className="flex items-center justify-between text-xs">
-      <span className="text-muted-foreground">{label}</span>
-      <span>{compact.format(value)}</span>
+      <span className="text-ink-3">{label}</span>
+      <span className="tabular-nums">{compact.format(value)}</span>
     </div>
   );
 }
@@ -28,7 +28,7 @@ function Row({ label, value }: { label: string; value: number }) {
 /** Token usage and cost for the current command, including prompt-cache hits. */
 export function UsageMeter({ usage, modelId }: { usage: RunUsage; modelId: string }) {
   const model = getModel(modelId);
-  // Shaped for AI Elements; cost is computed by us (lib/agent.ts), not tokenlens.
+  // Shaped for AI Elements; cost is computed by us (ai/models.ts costOf), not tokenlens.
   const aiUsage: LanguageModelUsage = {
     inputTokens: usage.inputTokens + usage.cacheReadTokens + usage.cacheWriteTokens,
     inputTokenDetails: {
@@ -43,7 +43,7 @@ export function UsageMeter({ usage, modelId }: { usage: RunUsage; modelId: strin
 
   return (
     <Context usedTokens={usage.contextTokens} maxTokens={model.contextWindow} usage={aiUsage}>
-      <ContextTrigger className="h-8 px-2 text-xs" />
+      <ContextTrigger className="h-[var(--control-h-sm)] rounded-[8px] px-2 font-normal text-ink-2 text-sm tabular-nums hover:text-ink" />
       <ContextContent align="end" className="w-64">
         <ContextContentHeader />
         <ContextContentBody className="space-y-1.5">
@@ -62,10 +62,10 @@ export function UsageMeter({ usage, modelId }: { usage: RunUsage; modelId: strin
           </ContextReasoningUsage>
         </ContextContentBody>
         <ContextContentFooter>
-          <span className="text-muted-foreground">
+          <span className="text-ink-3">
             {usage.rounds} round{usage.rounds === 1 ? '' : 's'} · cost
           </span>
-          <span>${usage.costUSD < 0.01 ? usage.costUSD.toFixed(5) : usage.costUSD.toFixed(3)}</span>
+          <span className="tabular-nums">${usage.costUSD < 0.01 ? usage.costUSD.toFixed(5) : usage.costUSD.toFixed(3)}</span>
         </ContextContentFooter>
       </ContextContent>
     </Context>

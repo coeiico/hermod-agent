@@ -1,9 +1,12 @@
-// Popup side of the worker connection: attaches to the current run (if any),
-// folds live events into state, and reconnects if the worker restarts.
+// Popup side of the worker connection: shows the open thread and the command
+// in progress (if any), folds live updates into state, and reconnects if the
+// worker restarts.
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { applyEvent, PORT_NAME, type PortMessage, type PortRequest, type RunState } from './run';
+import { applyUpdate, PORT_NAME, type PortMessage, type PortRequest, type RunState } from './run';
+import type { Thread } from './threads';
 
 export function useRun() {
+  const [thread, setThread] = useState<Thread | null>(null);
   const [run, setRun] = useState<RunState | null>(null);
   const [needsUnlock, setNeedsUnlock] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -23,11 +26,12 @@ export function useRun() {
       port.onMessage.addListener((msg: PortMessage) => {
         switch (msg.type) {
           case 'state':
+            setThread(msg.thread);
             setRun(msg.run);
             if (msg.run?.status === 'running' && msg.run.command === pendingCommand.current) pendingCommand.current = null;
             break;
-          case 'event':
-            setRun((r) => (r && r.id === msg.runId ? applyEvent(r, msg.event) : r));
+          case 'update':
+            setRun((r) => (r && r.id === msg.runId ? applyUpdate(r, msg.update) : r));
             break;
           case 'needs-unlock':
             setNeedsUnlock(true);
@@ -94,8 +98,12 @@ export function useRun() {
   );
 
   const stop = useCallback(() => send({ type: 'stop' }), [send]);
+  const openThread = useCallback((threadId: string) => send({ type: 'open-thread', threadId }), [send]);
+  const newThread = useCallback(() => send({ type: 'new-thread' }), [send]);
+  const deleteThread = useCallback((threadId: string) => send({ type: 'delete-thread', threadId }), [send]);
 
   return {
+    thread,
     run,
     error,
     clearError: () => setError(null),
@@ -105,6 +113,9 @@ export function useRun() {
     cancelUnlock,
     approve,
     stop,
+    openThread,
+    newThread,
+    deleteThread,
     running: run?.status === 'running',
   };
 }

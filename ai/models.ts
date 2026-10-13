@@ -1,5 +1,7 @@
-export type Effort = 'low' | 'medium' | 'high';
-export type CacheTtl = '5m' | '1h';
+// The Claude models Hermod offers, with their prices, for the model picker and
+// the cost shown for each command.
+import type { Effort } from './runtime/definition';
+import type { Usage } from './runtime/events';
 
 export interface ModelInfo {
   id: string;
@@ -36,12 +38,23 @@ export const MODELS: ModelInfo[] = [
   },
 ];
 
-export const DEFAULT_MODEL = 'claude-haiku-5-5';
-
 export function getModel(id: string): ModelInfo {
   return MODELS.find((m) => m.id === id) ?? MODELS[0]!;
 }
 
+export function costOf(usage: Usage, modelId: string): number {
+  const p = getModel(modelId).price;
+  return (
+    (usage.inputTokens * p.input +
+      usage.outputTokens * p.output +
+      usage.cacheReadTokens * p.cacheRead +
+      usage.cacheWrite5mTokens * p.cacheWrite5m +
+      usage.cacheWrite1hTokens * p.cacheWrite1h) /
+    1_000_000
+  );
+}
+
+/** The effort levels offered in the UI; the API also takes xhigh and max. */
 export const EFFORT_OPTIONS: { value: Effort; label: string; description: string }[] = [
   { value: 'low', label: 'Low', description: 'Fastest. Thinks only when it has to.' },
   { value: 'medium', label: 'Medium', description: 'Thinks a little more before acting.' },

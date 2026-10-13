@@ -1,0 +1,44 @@
+# The reference for an agent's config.yaml: every option an agent can set is
+# here, with what it does, the values it takes and its default. A real agent
+# sets only what it needs; everything except `id` and `model` has a default.
+#
+# `AgentConfigSchema` in ai/runtime/definition.ts is the authority. A key it
+# does not know fails the agent at load rather than being ignored, and
+# ai/agents/agents.test.ts fails if an option exists there but is missing here.
+# Adding an option means adding it to AgentConfigSchema, to buildParams in
+# ai/runtime/providers/anthropic.ts, and here.
+
+# Required. The agent's name with a version suffix. It names the agent in logs.
+id: template.v1
+
+# Required. The Claude model the agent runs on, by its exact API id, e.g.
+# claude-haiku-5-5 (fast, cheap) or claude-sonnet-5-5 (smarter). ai/models.ts
+# lists the models the UI offers and their prices.
+model: claude-haiku-5-5
+
+# How much the model thinks and how many tokens it spends overall. Thinking is
+# always adaptive: the model decides when to think, effort sets how much.
+# Default medium.
+# low → fastest; thinks only when it has to
+# medium → balanced
+# high → careful
+# xhigh → very careful (long agentic work)
+# max → the most thorough, the most expensive
+effort: medium
+
+# What the response returns of the model's thinking. The thinking itself
+# happens and is billed the same either way. Default summarized.
+# summarized → a readable summary, streamed to the UI as it forms
+# omitted → thinking blocks arrive empty (looks like a pause before the answer)
+thinking_display: summarized
+
+# The most tokens one response may produce, thinking included. Running out
+# ends the run with an error and runs none of that response's tool calls.
+# Default 16000.
+max_tokens: 16000
+
+# How long the cached prompt prefix (tools, system.md, instructions.md) lives
+# after its last use. Default 5m.
+# 5m → cheapest when runs come within 5 minutes of each other (write 1.25×)
+# 1h → survives longer gaps, but writing it costs 2× input
+cache_ttl: 5m

@@ -4,19 +4,21 @@ import { cn } from "@/lib/utils"
 import { Slot } from "radix-ui"
 
 const badgeVariants = cva(
-  "inline-flex w-fit shrink-0 items-center justify-center gap-1 overflow-hidden rounded-full border border-transparent px-2 py-0.5 text-xs font-medium whitespace-nowrap transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 [&>svg]:pointer-events-none [&>svg]:size-3",
+  "inline-flex w-fit shrink-0 items-center justify-center gap-1 overflow-hidden rounded-[8px] border px-1.5 py-0 text-[11px] leading-[18px] font-medium whitespace-nowrap transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 aria-invalid:border-destructive [&>svg]:pointer-events-none [&>svg]:size-3",
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground [a&]:hover:bg-primary/90",
-        secondary:
-          "bg-secondary text-secondary-foreground [a&]:hover:bg-secondary/90",
-        destructive:
-          "bg-destructive text-white focus-visible:ring-destructive/20 dark:bg-destructive/60 dark:focus-visible:ring-destructive/40 [a&]:hover:bg-destructive/90",
-        outline:
-          "border-border text-foreground [a&]:hover:bg-accent [a&]:hover:text-accent-foreground",
-        ghost: "[a&]:hover:bg-accent [a&]:hover:text-accent-foreground",
-        link: "text-primary underline-offset-4 [a&]:hover:underline",
+        default: "border-transparent bg-clay text-ink-inv [a&]:hover:bg-clay-hover",
+        secondary: "border-transparent bg-ground-sunk text-ink",
+        outline: "border-line bg-surface-alt text-ink-2 [a&]:hover:bg-ground-sunk",
+        /** Filled contrast chip for identity, not status. */
+        solid: "border-transparent bg-contrast text-contrast-ink",
+        /** Tinted chips carry an edge in their own hue, or the soft fill melts into
+            grey surfaces. Dark tints are translucent, so the edge drops to /20 there. */
+        destructive: "border-bad/35 bg-bad-tint text-bad-ink dark:border-bad/20",
+        success: "border-sage/35 bg-sage-tint text-sage-ink dark:border-sage/20",
+        warning: "border-amber/35 bg-amber-tint text-amber-ink dark:border-amber/20",
+        clay: "border-clay/35 bg-clay-tint text-clay-ink dark:border-clay/20",
       },
     },
     defaultVariants: {

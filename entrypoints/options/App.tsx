@@ -16,11 +16,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
-import { EFFORT_OPTIONS, MODELS, type CacheTtl, type Effort } from '@/lib/models';
+import { EFFORT_OPTIONS, MODELS } from '@/ai/models';
+import type { CacheTtl, Effort } from '@/ai/runtime/definition';
 import { getKeyStatus, rpc, type KeyStatus } from '@/lib/rpc';
-import { DEFAULT_SETTINGS, getSettings, onSettingsChanged, updateSettings, type Settings } from '@/lib/settings';
+import { APPROVAL_MODE_OPTIONS, DEFAULT_SETTINGS, getSettings, onSettingsChanged, updateSettings, type Settings } from '@/lib/settings';
 import { DEFAULT_PASSPHRASE } from '@/lib/vault';
-import { AlertTriangleIcon, CheckCircle2Icon, KeyRoundIcon, LockIcon, LockOpenIcon, SparklesIcon, XCircleIcon } from 'lucide-react';
+import { AlertTriangleIcon, CheckCircle2Icon, KeyRoundIcon, LockIcon, LockOpenIcon, XCircleIcon } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 
 type Feedback = { ok: boolean; text: string } | null;
@@ -28,8 +29,8 @@ type Feedback = { ok: boolean; text: string } | null;
 function FeedbackLine({ feedback }: { feedback: Feedback }) {
   if (!feedback) return null;
   return (
-    <p className={`flex items-center gap-1.5 text-sm ${feedback.ok ? 'text-green-600 dark:text-green-500' : 'text-destructive'}`}>
-      {feedback.ok ? <CheckCircle2Icon className="size-4" /> : <XCircleIcon className="size-4" />}
+    <p className={`flex items-center gap-1.5 text-sm ${feedback.ok ? 'text-sage-ink' : 'text-bad-ink'}`}>
+      {feedback.ok ? <CheckCircle2Icon className="size-3.5" /> : <XCircleIcon className="size-3.5" />}
       {feedback.text}
     </p>
   );
@@ -37,10 +38,10 @@ function FeedbackLine({ feedback }: { feedback: Feedback }) {
 
 function Field({ id, label, hint, children }: { id: string; label: string; hint?: string; children: React.ReactNode }) {
   return (
-    <div className="grid gap-1.5">
+    <div className="grid content-start gap-1.5">
       <Label htmlFor={id}>{label}</Label>
       {children}
-      {hint && <p className="text-muted-foreground text-xs">{hint}</p>}
+      {hint && <p className="text-ink-3 text-xs">{hint}</p>}
     </div>
   );
 }
@@ -91,10 +92,10 @@ function KeyCard({ status, refresh }: { status: KeyStatus; refresh: () => void }
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <KeyRoundIcon className="size-4" /> API key
+          <KeyRoundIcon className="size-3.5 text-ink-3" /> API key
           {status.hasVault ? (
-            <Badge variant="secondary" className="gap-1">
-              {status.unlocked ? <LockOpenIcon className="size-3 text-green-600" /> : <LockIcon className="size-3" />}
+            <Badge variant={status.unlocked ? 'success' : 'secondary'}>
+              {status.unlocked ? <LockOpenIcon /> : <LockIcon />}
               {status.unlocked ? 'Saved · unlocked' : 'Saved · locked'}
             </Badge>
           ) : (
@@ -108,7 +109,7 @@ function KeyCard({ status, refresh }: { status: KeyStatus; refresh: () => void }
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <form onSubmit={save} className="grid gap-4">
+        <form onSubmit={save} className="grid gap-3">
           <Field id="api-key" label={status.hasVault ? 'Replace API key' : 'API key'}>
             <Input
               id="api-key"
@@ -146,7 +147,7 @@ function KeyCard({ status, refresh }: { status: KeyStatus; refresh: () => void }
         </form>
       </CardContent>
       {status.hasVault && (
-        <CardFooter className="flex flex-col items-stretch gap-6 border-t pt-6">
+        <CardFooter className="flex flex-col items-stretch gap-5 border-t pt-6">
           <ChangePassphrase refresh={refresh} />
           <Separator />
           <RemoveKey refresh={refresh} />
@@ -183,8 +184,8 @@ function ChangePassphrase({ refresh }: { refresh: () => void }) {
 
   return (
     <form onSubmit={submit} className="grid gap-3">
-      <h3 className="font-medium text-sm">Change passphrase</h3>
-      <div className="grid gap-3 sm:grid-cols-3">
+      <h3 className="font-medium text-base">Change passphrase</h3>
+      <div className="grid gap-2 sm:grid-cols-3">
         <Input type="password" placeholder="Current passphrase" value={oldPass} onChange={(e) => setOldPass(e.target.value)} />
         <Input type="password" placeholder="New passphrase" value={newPass} onChange={(e) => setNewPass(e.target.value)} />
         <Input type="password" placeholder="Repeat new passphrase" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
@@ -203,8 +204,8 @@ function RemoveKey({ refresh }: { refresh: () => void }) {
   return (
     <div className="flex items-center justify-between gap-4">
       <div>
-        <h3 className="font-medium text-sm">Remove key</h3>
-        <p className="text-muted-foreground text-xs">Deletes the encrypted key and forgets the unlocked copy.</p>
+        <h3 className="font-medium text-base">Remove key</h3>
+        <p className="text-ink-3 text-xs">Deletes the encrypted key and forgets the unlocked copy.</p>
       </div>
       <Dialog>
         <DialogTrigger asChild>
@@ -237,6 +238,33 @@ function RemoveKey({ refresh }: { refresh: () => void }) {
   );
 }
 
+function ModeCard({ settings }: { settings: Settings }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Mode</CardTitle>
+        <CardDescription>When Hermod asks before acting. The same choice as the mode below the prompt.</CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-3 sm:grid-cols-3">
+        <Field id="mode" label="Mode" hint={APPROVAL_MODE_OPTIONS.find((o) => o.value === settings.approvalMode)?.description}>
+          <Select value={settings.approvalMode} onValueChange={(v) => void updateSettings({ approvalMode: v as Settings['approvalMode'] })}>
+            <SelectTrigger id="mode" className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {APPROVAL_MODE_OPTIONS.map((o) => (
+                <SelectItem key={o.value} value={o.value}>
+                  {o.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Field>
+      </CardContent>
+    </Card>
+  );
+}
+
 function ModelCard({ settings }: { settings: Settings }) {
   return (
     <Card>
@@ -244,7 +272,7 @@ function ModelCard({ settings }: { settings: Settings }) {
         <CardTitle>Model</CardTitle>
         <CardDescription>Haiku is fast and cheap and handles clear commands. Switch to Sonnet for fuzzier requests.</CardDescription>
       </CardHeader>
-      <CardContent className="grid gap-4 sm:grid-cols-3">
+      <CardContent className="grid gap-3 sm:grid-cols-3">
         <Field id="model" label="Model">
           <Select value={settings.model} onValueChange={(model) => void updateSettings({ model })}>
             <SelectTrigger id="model" className="w-full">
@@ -311,7 +339,7 @@ function ShortcutCard() {
         <CardDescription>
           {shortcut ? (
             <>
-              Open Hermod with <kbd className="rounded border bg-muted px-1.5 py-0.5 font-mono text-xs">{shortcut}</kbd>.
+              Open Hermod with <kbd className="rounded-[6px] border border-line bg-surface-alt px-1.5 py-0.5 font-mono text-xs">{shortcut}</kbd>.
             </>
           ) : (
             'No shortcut is set (another extension or Vivaldi may already use Alt+Space).'
@@ -364,16 +392,15 @@ export default function App() {
   }, [refresh]);
 
   return (
-    <div className="min-h-screen bg-background">
-      <main className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-10">
-        <header className="flex items-center gap-2">
-          <SparklesIcon className="size-5" />
-          <h1 className="font-semibold text-xl">Hermod Agent</h1>
-          <span className="text-muted-foreground text-sm">Settings · Manage keys</span>
+    <div className="min-h-screen bg-ground">
+      <main className="mx-auto flex max-w-3xl flex-col gap-3 px-4 py-10">
+        <header className="mb-2">
+          <h1 className="font-display font-semibold text-4xl text-ink tracking-tight">Hermod Agent</h1>
+          <p className="mt-1 max-w-2xl text-[12px] text-ink-3 leading-4">Settings and API keys for the Hermod browser agent.</p>
         </header>
 
         {status?.hasVault && status.usesDefaultPassphrase && (
-          <Alert>
+          <Alert variant="warning">
             <AlertTriangleIcon />
             <AlertTitle>You're using the default passphrase</AlertTitle>
             <AlertDescription>
@@ -384,6 +411,7 @@ export default function App() {
         )}
 
         {status && <KeyCard status={status} refresh={refresh} />}
+        <ModeCard settings={settings} />
         <ModelCard settings={settings} />
         <ShortcutCard />
         <PageAccessCard />

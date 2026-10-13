@@ -1,11 +1,13 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { ScrollBar } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import type { UIMessage } from "ai";
 import { ArrowDownIcon, DownloadIcon } from "lucide-react";
 import type { ComponentProps } from "react";
 import { useCallback } from "react";
+import { ScrollArea as ScrollAreaPrimitive } from "radix-ui";
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
 
 export type ConversationProps = ComponentProps<typeof StickToBottom>;
@@ -20,19 +22,33 @@ export const Conversation = ({ className, ...props }: ConversationProps) => (
   />
 );
 
-export type ConversationContentProps = ComponentProps<
-  typeof StickToBottom.Content
->;
+export type ConversationContentProps = ComponentProps<"div">;
 
+// Edited: scrolls inside a Radix scroll area so the chat uses the shadcn
+// scrollbar. Its viewport is the element StickToBottom scrolls and measures.
+// Radix wraps the content in a `display: table` div, which lets wide content
+// (the snapshot code block) push the column wider than the panel; `block` stops it.
 export const ConversationContent = ({
   className,
   ...props
-}: ConversationContentProps) => (
-  <StickToBottom.Content
-    className={cn("flex flex-col gap-8 p-4", className)}
-    {...props}
-  />
-);
+}: ConversationContentProps) => {
+  const { scrollRef, contentRef } = useStickToBottomContext();
+  return (
+    <ScrollAreaPrimitive.Root className="size-full">
+      <ScrollAreaPrimitive.Viewport
+        className="size-full rounded-[inherit] [&>div]:block!"
+        ref={scrollRef}
+      >
+        <div
+          className={cn("flex flex-col gap-8 p-4", className)}
+          ref={contentRef}
+          {...props}
+        />
+      </ScrollAreaPrimitive.Viewport>
+      <ScrollBar />
+    </ScrollAreaPrimitive.Root>
+  );
+};
 
 export type ConversationEmptyStateProps = ComponentProps<"div"> & {
   title?: string;

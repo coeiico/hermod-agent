@@ -25,7 +25,7 @@ export type ToolProps = ComponentProps<typeof Collapsible>;
 
 export const Tool = ({ className, ...props }: ToolProps) => (
   <Collapsible
-    className={cn("group not-prose mb-4 w-full rounded-md border", className)}
+    className={cn("group not-prose mb-4 w-full rounded-[12px] border border-line", className)}
     {...props}
   />
 );
@@ -55,17 +55,17 @@ const statusLabels: Record<ToolPart["state"], string> = {
 };
 
 const statusIcons: Record<ToolPart["state"], ReactNode> = {
-  "approval-requested": <ClockIcon className="size-4 text-yellow-600" />,
-  "approval-responded": <CheckCircleIcon className="size-4 text-blue-600" />,
-  "input-available": <ClockIcon className="size-4 animate-pulse" />,
-  "input-streaming": <CircleIcon className="size-4" />,
-  "output-available": <CheckCircleIcon className="size-4 text-green-600" />,
-  "output-denied": <XCircleIcon className="size-4 text-orange-600" />,
-  "output-error": <XCircleIcon className="size-4 text-red-600" />,
+  "approval-requested": <ClockIcon className="size-3 text-amber" />,
+  "approval-responded": <CheckCircleIcon className="size-3 text-ink-3" />,
+  "input-available": <ClockIcon className="size-3 animate-pulse text-ink-3" />,
+  "input-streaming": <CircleIcon className="size-3 text-ink-3" />,
+  "output-available": <CheckCircleIcon className="size-3 text-sage" />,
+  "output-denied": <XCircleIcon className="size-3 text-amber" />,
+  "output-error": <XCircleIcon className="size-3 text-bad" />,
 };
 
 export const getStatusBadge = (status: ToolPart["state"]) => (
-  <Badge className="gap-1.5 rounded-full text-xs" variant="secondary">
+  <Badge variant="outline">
     {statusIcons[status]}
     {statusLabels[status]}
   </Badge>

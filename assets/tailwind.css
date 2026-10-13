@@ -1,98 +1,313 @@
+/* Baritone design language, from its porting kit (https://claude.ai/artifact/2y3oeBNsQtCBxy5mn13dKb).
+   Departures from the kit: fonts are bundled through Fontsource instead of next/font,
+   `--font-mono` keeps Tailwind's monospace stack so the browser snapshot lines up, and
+   the body's forced scrollbar is left out because the popup has a fixed size. */
+
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "@fontsource-variable/inter/wght.css";
+@import "@fontsource/petrona/latin-500.css";
+@import "@fontsource/petrona/latin-600.css";
+@import "@fontsource/petrona/latin-700.css";
 
 @custom-variant dark (&:is(.dark *));
 
+@theme {
+  --text-xs: 11px;
+  --text-xs--line-height: 16px;
+
+  --text-sm: 12px;
+  --text-sm--line-height: 18px;
+
+  --text-base: 13px;
+  --text-base--line-height: 20px;
+
+  --text-lg: 14px;
+  --text-lg--line-height: 20px;
+
+  --text-xl: 16px;
+  --text-xl--line-height: 22px;
+
+  --text-2xl: 18px;
+  --text-2xl--line-height: 24px;
+
+  /* The control scale. Buttons, selects, inputs and anything else that reads as a
+     single-line control share these three heights so a row of mixed controls lines
+     up. Prefer these over ad-hoc `h-*` on a control. */
+  --control-h-sm: 22px;
+  --control-h: 26px;
+  --control-h-lg: 30px;
+}
+
 @theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-inter);
+  --font-display: var(--font-petrona);
+
+  /* Warm neutral palette — see :root for the raw values. */
+  --color-ground: var(--ground);
+  --color-ground-sunk: var(--ground-sunk);
+  --color-surface: var(--surface);
+  --color-surface-alt: var(--surface-alt);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-ink-inv: var(--ink-inv);
+
+  --color-contrast: var(--contrast);
+  --color-contrast-ink: var(--contrast-ink);
+  --color-button-primary: var(--button-primary);
+  --color-button-primary-hover: var(--button-primary-hover);
+  --color-button-primary-ink: var(--button-primary-ink);
+  --color-button-primary-edge: var(--button-primary-edge);
+  --color-overlay: var(--overlay);
+
+  --color-clay: var(--clay);
+  --color-clay-hover: var(--clay-hover);
+  --color-clay-tint: var(--clay-tint);
+  --color-clay-ink: var(--clay-ink);
+  --color-sage: var(--sage);
+  --color-sage-tint: var(--sage-tint);
+  --color-sage-ink: var(--sage-ink);
+  --color-amber: var(--amber);
+  --color-amber-tint: var(--amber-tint);
+  --color-amber-ink: var(--amber-ink);
+  --color-bad: var(--bad);
+  --color-bad-tint: var(--bad-tint);
+  --color-bad-ink: var(--bad-ink);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-card: var(--card);
-  --color-card-foreground: var(--card-foreground);
-  --color-popover: var(--popover);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-primary: var(--primary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-secondary: var(--secondary);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-muted: var(--muted);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-destructive: var(--destructive);
-  --color-border: var(--border);
-  --color-input: var(--input);
-  --color-ring: var(--ring);
-  --color-sidebar: var(--sidebar);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+body {
+  font-family: var(--font-inter), system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
 :root {
+  color-scheme: light;
   --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --font-inter: "Inter Variable";
+  --font-petrona: "Petrona", ui-serif, Georgia, Cambria, "Times New Roman", serif;
+
+  /* ── Warm muted palette ───────────────────────────────────────────────
+     Neutrals carry the page; accents appear sparingly. Everything below
+     this block is the shadcn token layer mapped onto these names, so
+     components can use either `bg-surface` or `bg-card` and stay in sync. */
+
+  /* Neutrals */
+  --ground: #F8F8F7;
+  --ground-sunk: #EAEAE8;
+  --surface: #fdfdfc;
+  --surface-alt: #f7f7f5;
+  --line: #e6e6e2;
+  --line-strong: #d7d7d2;
+  --ink: #1e1e1c;
+  --ink-2: #565450;
+  --ink-3: #8b8983;
+  --ink-inv: #ffffff;
+
+  /* Clay — primary/brand accent */
+  --clay: #b6613f;
+  --clay-hover: #9e5133;
+  --clay-tint: #f0e6e0;
+  --clay-ink: #7d3f26;
+
+  /* Sage — success/good */
+  --sage: #6f8a78;
+  --sage-tint: #e7ece8;
+  --sage-ink: #46604e;
+
+  /* Amber — warning */
+  --amber: #b08d3c;
+  --amber-tint: #efe8d8;
+  --amber-ink: #86682a;
+
+  /* Bad — error/danger */
+  --bad: #b45c43;
+  --bad-tint: #f0ddd7;
+  --bad-ink: #a2503a;
+
+  /* Contrast chip — tooltips and the solid identity badge. A surface that
+     deliberately opposes the page so a small chip reads as pinned on top of it.
+     Light inverts to near-black; dark lifts instead of inverting, because a white
+     chip on a dark page glares. Always use the pair. */
+  --contrast: var(--ink);
+  --contrast-ink: var(--ink-inv);
+
+  /* Primary button. Not clay: clay is the accent for focus and checked state, and
+     an action should never read as one more status chip. Graphite in both themes —
+     a warm grey a step softer than ink, with white text here and light ink in
+     dark — deepening on hover in light and lifting in dark. The edge is the fill.
+     `--primary` stays clay, so checkboxes, switches and sliders keep the accent. */
+  --button-primary: #4a4845;
+  --button-primary-hover: #3a3835;
+  --button-primary-ink: var(--ink-inv);
+  --button-primary-edge: #4a4845;
+
+  /* Modal scrim. Not `--ink`: that flips to near-white in dark and would wash
+     the page out instead of dimming it. */
+  --overlay: oklab(0% 0 0 / 0.35);
+
+  /* Text selection. A translucent clay wash rather than a solid fill: the text keeps
+     its own colour, so a selection across ink, muted ink and accent text stays
+     legible, and the wash lands the same on every surface beneath it. */
+  --selection: color-mix(in oklab, var(--clay) 22%, transparent);
+
+  /* ── shadcn token layer ─────────────────────────────────────────────── */
+  --background: var(--ground);
+  --foreground: var(--ink);
+  --card: var(--surface);
+  --card-foreground: var(--ink);
+  --popover: var(--surface);
+  --popover-foreground: var(--ink);
+  --primary: var(--clay);
+  --primary-foreground: var(--ink-inv);
+  --secondary: var(--ground-sunk);
+  --secondary-foreground: var(--ink);
+  --muted: var(--surface-alt);
+  --muted-foreground: var(--ink-3);
+  --accent: var(--surface-alt);
+  --accent-foreground: var(--ink);
+  --destructive: var(--bad-ink);
+  --border: var(--line);
+  --input: var(--line-strong);
+  --ring: var(--clay);
+  --chart-1: var(--clay);
+  --chart-2: var(--sage);
+  --chart-3: var(--amber);
+  --chart-4: #8a7f74;
+  --chart-5: #6d7f8a;
+  --sidebar: var(--surface);
+  --sidebar-foreground: var(--ink);
+  --sidebar-primary: var(--clay);
+  --sidebar-primary-foreground: var(--ink-inv);
+  --sidebar-accent: var(--ground-sunk);
+  --sidebar-accent-foreground: var(--ink);
+  --sidebar-border: var(--line);
+  --sidebar-ring: var(--clay);
 }
 
+/* ── Dark theme ───────────────────────────────────────────────────────────
+   Designed, not inverted:
+
+   1. **Fills lift.** On a dark page, emphasis is light. The page is the
+      darkest plane, panels sit above it, and anything painted on a panel sits
+      above that: `ground` < `surface` < `surface-alt` (the quiet fill: hover
+      rows, inputs, outline chips) < `ground-sunk` (the solid fill: secondary
+      chips, header strips, active rows). The token *names* are light mode's;
+      in dark, read `ground-sunk` as "neutral fill", not "recess".
+   2. **Light's steps, mirrored.** Every neutral sits the same L* distance from
+      `surface` as its light counterpart, only upward. Small steps, with the
+      hairlines doing the structural work. Re-measure before moving any of
+      these; the gaps are the design, not the hexes.
+   3. **Popovers float, gently.** `--popover` sits just above `surface` and the
+      menu highlight (`--accent`) a fill-step above that, with a `line-strong`
+      edge and a real shadow (in the primitives).
+   4. **Near-neutral, not brown.** A trace of warmth so the accents still sit in
+      the same family.
+   5. **Text contrast is matched, not maximised.** `ink` stops short of white —
+      full white on near-black haloes — and `ink-3` stays above its light
+      counterpart, because muted text needs the help once shadow cues are gone.
+
+   Accents keep their light-mode hue and trade chroma for lightness, so they
+   stay legible as both a fill and as text on the ground. The `-tint` families
+   are translucent washes and the `-ink` families the light text that sits on
+   them — the same pairing, reflected. */
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  color-scheme: dark;
+
+  /* Neutrals — page, panel, then the two fills; steps mirror light's (rule 2). */
+  --ground: #1a1917;
+  --surface: #1f1e1c;
+  --surface-alt: #242321;
+  --ground-sunk: #2d2c2a;
+  --line: #302f2d;
+  --line-strong: #3c3b39;
+  --ink: #ecebe6;
+  --ink-2: #b4b1aa;
+  --ink-3: #8b8780;
+  --ink-inv: #131211;
+
+  /* Accents. The `-tint` washes are *translucent* here (a share of the hue over
+     whatever is beneath), so a chip stays true to its hue on the page, a panel or
+     a hover row alike. Pair it with a faint `hue/20` edge, not a strong one. */
+  --clay: #da8e6f;
+  --clay-hover: #eaa68c;
+  --clay-tint: color-mix(in oklab, var(--clay) 16%, transparent);
+  --clay-ink: #f0ae92;
+
+  --sage: #8dad98;
+  --sage-tint: color-mix(in oklab, var(--sage) 16%, transparent);
+  --sage-ink: #a9d0b5;
+
+  --amber: #d2af66;
+  --amber-tint: color-mix(in oklab, var(--amber) 15%, transparent);
+  --amber-ink: #e9c886;
+
+  --bad: #dc886f;
+  --bad-tint: color-mix(in oklab, var(--bad) 17%, transparent);
+  --bad-ink: #f2a690;
+
+  /* Contrast chip lifts well clear of the fills rather than inverting to white. */
+  --contrast: #423f3c;
+  --contrast-ink: var(--ink);
+
+  /* Primary button: graphite, lifting on hover; the edge is its own fill. */
+  --button-primary: #4a4845;
+  --button-primary-hover: #57554f;
+  --button-primary-ink: var(--ink);
+  --button-primary-edge: #4a4845;
+
+  /* A heavier scrim: the page beneath is already dark, so 35% barely reads. */
+  --overlay: oklab(0% 0 0 / 0.6);
+
+  /* Dark clay is lighter, so the same share washes out against light ink; a
+     stronger mix keeps the band visible without dimming the text inside it. */
+  --selection: color-mix(in oklab, var(--clay) 32%, transparent);
+
+  /* ── shadcn token layer ───────────────────────────────────────────────
+     `popover` and `accent` are the two remaps (rule 2): menus, selects and
+     dropdowns open on their own raised plane, and their highlighted item lifts
+     again rather than matching the quiet fill. */
+  --popover: #262523;
+  --accent: var(--ground-sunk);
+  --input: var(--line-strong);
+  --chart-4: #a19487;
+  --chart-5: #8299a7;
 }
 
 @layer base {
@@ -100,6 +315,29 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased;
   }
+  ::selection {
+    background-color: var(--selection);
+  }
+}
+
+/* An agent step in progress: ink sweeping across muted ink, so it reads as alive
+   without a spinner beside every line. Tokens only, so it follows the theme. */
+@utility text-shimmer {
+  background-image: linear-gradient(90deg, var(--ink-3) 35%, var(--ink) 50%, var(--ink-3) 65%);
+  background-size: 250% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  animation: text-shimmer 2.2s linear infinite;
+}
+
+@keyframes text-shimmer {
+  from { background-position: 100% 0; }
+  to { background-position: 0% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .text-shimmer { animation: none; }
 }

@@ -1,0 +1,11 @@
+id: browser_command.v3
+# The default; the model picker in the popup and Settings overrides it.
+model: claude-haiku-5-5
+# Clear commands rarely need much thought, and low effort keeps them fast.
+# The popup's effort picker overrides it.
+effort: low
+thinking_display: summarized
+# Thinking counts against this too. A low cap risks cutting a tool call off
+# mid-input, which then can't be run.
+max_tokens: 8000
+cache_ttl: 5m

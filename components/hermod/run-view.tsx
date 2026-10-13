@@ -19,7 +19,7 @@ import { Reasoning, ReasoningContent, ReasoningTrigger } from '@/components/ai-e
 import { Shimmer } from '@/components/ai-elements/shimmer';
 import { Tool, ToolContent, ToolHeader, ToolInput, ToolOutput } from '@/components/ai-elements/tool';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { getModel } from '@/lib/models';
+import { getModel } from '@/ai/models';
 import type { RunState } from '@/lib/run';
 import type { DynamicToolUIPart, UIMessage } from 'ai';
 import type { BundledLanguage } from 'shiki';
@@ -46,17 +46,17 @@ function ToolCall({ part, onApprove }: { part: DynamicToolUIPart; onApprove: (ap
           <ToolOutput output={part.output} errorText={part.errorText} />
         </ToolContent>
       </Tool>
-      <Confirmation approval={part.approval} state={part.state} className={awaiting ? 'border-amber-500/50' : undefined}>
+      <Confirmation approval={part.approval} state={part.state} className={awaiting ? 'border-amber/60' : undefined}>
         <ConfirmationTitle>
           <ConfirmationRequest>{part.approval?.requestReason ?? 'Allow this action?'}</ConfirmationRequest>
           <ConfirmationAccepted>
             <span className="inline-flex items-center gap-1.5">
-              <CheckIcon className="size-4 text-green-600" /> Approved
+              <CheckIcon className="size-3.5 text-sage" /> Approved
             </span>
           </ConfirmationAccepted>
           <ConfirmationRejected>
             <span className="inline-flex items-center gap-1.5">
-              <XIcon className="size-4 text-orange-600" /> Declined. Nothing was changed.
+              <XIcon className="size-3.5 text-amber" /> Declined. Nothing was changed.
             </span>
           </ConfirmationRejected>
         </ConfirmationTitle>
@@ -144,15 +144,18 @@ export function RunView({ run, onApprove }: { run: RunState; onApprove: (approva
                 <ChainOfThoughtStep
                   icon={MonitorIcon}
                   label={`${run.snapshot.displays} display${run.snapshot.displays === 1 ? '' : 's'}, ${run.snapshot.windows} windows, ${run.snapshot.tabs} tabs`}
-                  description="Sent to Claude with your command. Fresh every time; nothing carries over between commands."
+                  description="Sent to Claude with your command, fresh each time. Earlier commands in the thread go with it; their snapshots don't."
                 />
-                <ChainOfThoughtStep icon={CameraIcon} label="Snapshot">
-                  <CodeBlock
-                    className="max-h-64 overflow-auto text-[11px]"
-                    code={run.snapshot.text}
-                    language={'text' as BundledLanguage}
-                  />
-                </ChainOfThoughtStep>
+                {/* Saved turns drop the snapshot text, so only the live command shows it. */}
+                {run.snapshot.text && (
+                  <ChainOfThoughtStep icon={CameraIcon} label="Snapshot">
+                    <CodeBlock
+                      className="max-h-64 overflow-auto text-[11px]"
+                      code={run.snapshot.text}
+                      language={'text' as BundledLanguage}
+                    />
+                  </ChainOfThoughtStep>
+                )}
               </ChainOfThoughtContent>
             </ChainOfThought>
           )}
@@ -160,7 +163,7 @@ export function RunView({ run, onApprove }: { run: RunState; onApprove: (approva
           <AssistantParts message={assistant ?? { id: 'empty', role: 'assistant', parts: [] }} running={running} onApprove={onApprove} />
 
           {running && !streamingSomething && !awaitingApproval && (
-            <Shimmer className="text-sm" duration={1.5}>
+            <Shimmer duration={1.5}>
               {run.snapshot ? 'Working…' : 'Reading your browser…'}
             </Shimmer>
           )}
@@ -180,14 +183,14 @@ export function RunView({ run, onApprove }: { run: RunState; onApprove: (approva
             </Alert>
           )}
           {run.status === 'stopped' && (
-            <p className="flex items-center gap-1.5 text-muted-foreground text-sm">
-              <CircleStopIcon className="size-4" /> Stopped.
+            <p className="flex items-center gap-1.5 text-ink-3">
+              <CircleStopIcon className="size-3.5" /> Stopped.
             </p>
           )}
           {run.status === 'done' && !hasText && run.summary && <MessageResponse>{run.summary}</MessageResponse>}
 
           {!running && run.endedAt && (
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-ink-3 text-xs tabular-nums">
               {getModel(run.model).name} · {formatDuration(run.endedAt - run.startedAt)} · {run.usage.rounds} round
               {run.usage.rounds === 1 ? '' : 's'}
             </p>

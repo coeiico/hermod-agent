@@ -1,7 +1,7 @@
 // One-off request/response messages from the popup and settings page to the
 // background worker. The worker is the only place the API key is decrypted
 // or used; these messages carry passphrases in, never the key out.
-import type { RunRecord } from './run';
+import type { ThreadSummary } from './threads';
 
 export type RpcRequest =
   | { type: 'status' }
@@ -11,8 +11,7 @@ export type RpcRequest =
   | { type: 'change-passphrase'; oldPassphrase: string; newPassphrase: string }
   | { type: 'remove-key' }
   | { type: 'test-key'; passphrase?: string }
-  | { type: 'history' }
-  | { type: 'clear-history' };
+  | { type: 'list-threads' };
 
 export type RpcResponse =
   | {
@@ -21,7 +20,7 @@ export type RpcResponse =
       unlocked?: boolean;
       usesDefaultPassphrase?: boolean;
       models?: string[];
-      history?: RunRecord[];
+      threads?: ThreadSummary[];
     }
   | { ok: false; error: string };
 

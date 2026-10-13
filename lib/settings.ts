@@ -1,4 +1,6 @@
-import { DEFAULT_MODEL, type CacheTtl, type Effort } from './models';
+import { browserCommandAgent } from '@/ai/agents/interactive/browser_command/agent';
+import type { ApprovalMode } from '@/ai/runtime/context';
+import type { CacheTtl, Effort } from '@/ai/runtime/definition';
 
 // Non-secret preferences. Safe for the popup and settings page to read and
 // write directly. The API key vault lives under a separate storage key and is
@@ -7,28 +9,46 @@ export interface Settings {
   model: string;
   effort: Effort;
   cacheTtl: CacheTtl;
+  /** When Hermod asks before acting. Picked in the popup, below the prompt. */
+  approvalMode: ApprovalMode;
   /** True while the vault is encrypted with DEFAULT_PASSPHRASE. */
   usesDefaultPassphrase: boolean;
 }
 
+// The agent's config.yaml is the single source of the defaults.
+const agentDefaults = browserCommandAgent.config;
+
 export const DEFAULT_SETTINGS: Settings = {
-  model: DEFAULT_MODEL,
-  effort: 'low',
-  cacheTtl: '5m',
+  model: agentDefaults.model,
+  effort: agentDefaults.effort,
+  cacheTtl: agentDefaults.cache_ttl,
+  approvalMode: 'auto',
   usesDefaultPassphrase: true,
 };
 
+export const APPROVAL_MODE_OPTIONS: { value: ApprovalMode; label: string; description: string }[] = [
+  { value: 'ask', label: 'Ask first', description: 'Asks before every change to your tabs and windows.' },
+  { value: 'auto', label: 'Auto', description: 'Makes changes, and asks before closing several tabs or a window.' },
+  { value: 'never', label: "Don't ask", description: 'Never asks, even before closing. Closed tabs can be reopened.' },
+];
+
 const KEY = 'settings';
 
-export async function getSettings(): Promise<Settings> {
+// Only what the user changed is stored, so a new default in config.yaml still
+// reaches everyone who never picked their own.
+async function getStored(): Promise<Partial<Settings>> {
   const stored = await browser.storage.local.get(KEY);
-  return { ...DEFAULT_SETTINGS, ...(stored[KEY] as Partial<Settings> | undefined) };
+  return (stored[KEY] as Partial<Settings> | undefined) ?? {};
+}
+
+export async function getSettings(): Promise<Settings> {
+  return { ...DEFAULT_SETTINGS, ...(await getStored()) };
 }
 
 export async function updateSettings(patch: Partial<Settings>): Promise<Settings> {
-  const next = { ...(await getSettings()), ...patch };
-  await browser.storage.local.set({ [KEY]: next });
-  return next;
+  const stored = { ...(await getStored()), ...patch };
+  await browser.storage.local.set({ [KEY]: stored });
+  return { ...DEFAULT_SETTINGS, ...stored };
 }
 
 export function onSettingsChanged(cb: (settings: Settings) => void): () => void {

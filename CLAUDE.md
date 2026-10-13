@@ -35,36 +35,51 @@
 ## Code Design
 
 - Use `./.agents/instructions/code-design.md` for how code itself is written: simplicity, function shape, abstraction discipline, data modeling, dependency direction, and error handling.
+- Use `./.agents/instructions/project-structure.md` for where code belongs.
+
+## Project Overview
+
+Hermod Agent is a Manifest V3 browser extension for Vivaldi (WXT + React + TypeScript + Tailwind + shadcn/ui + AI Elements). The user types a plain-language command and a Claude agent carries it out with browser tools.
+
+- `entrypoints/background.ts` - the service worker: owns the API key, runs agents, streams progress to the popup.
+- `entrypoints/popup/`, `entrypoints/options/` - the prompt window and the settings page. Interfaces only; no agent logic.
+- `ai/` - the LLM agents, their runtime and their tools (below).
+- `lib/` - the rest of the extension: the run state shared with the popup (`run.ts`, `run-controller.ts`, `use-run.ts`), settings, and the key vault.
+- `components/` - `ui/` (shadcn), `ai-elements/` (vendored AI Elements, edited: nothing may load from the network), `hermod/` (Hermod's own).
+
+Verify with `npm test` (unit tests), `npm run compile` (types) and `npm run build`.
 
 ## LLM Agent Overview
 
-The primary folder that contains the LLM agent infrastructure is `src/baritone/ai`. Each agent is one directory, `src/baritone/ai/agents/<role>/<name>/`, holding its code (`agent.py`), config and prompts together. The role folder (`analysis`, `assessment`, `response`, `gates`, `policy`, `interactive`, `research`) says what kind of job the agent does, and the name says what it produces or decides, read on its own (`incident_profile`, `reanalysis_gate`). Agents are not named after the incident field they write: Elasticsearch field names stay as they are. Follow the naming rules in `baritone-agents-overview.md` before adding or renaming an agent. Every agent inherits from the base agent in `src/baritone/ai/runtime/agent.py`, which finds the agent's directory from the subclass's module, so no agent declares a path. The engine that runs agents is `src/baritone/ai/runtime/` (the run loop, prompts, tools, sub-agents, providers); it imports nothing from `agents/`, `tools/`, `policies/`, `elastic/` or `ingestion/`. Every agent's `run` takes a `RunContext` (site, actor, permissions, limits) first, tools are `Tool` objects the agent class declares (`tools = (...)`), each with a declared effect, and templates render with `StrictUndefined`.
-We use context engineering (more advanced prompt engineering) for each agent: its prompts sit beside `agent.py` and use markdown and jinja2. Partials shared between agents live in `src/baritone/ai/agents/_partials/`.
+The LLM agent infrastructure lives in `ai/`. Each agent is one directory, `ai/agents/<role>/<name>/`, holding its code (`agent.ts`), config and prompts together. The role folder (`interactive`) says what kind of job the agent does, and the name says what it produces or decides, read on its own (`browser_command`). Follow the naming rules in `hermod-agents-overview.md` before adding or renaming an agent. An agent is a `defineAgent(...)` call in its `agent.ts`, which imports its config and prompts with Vite `?raw` imports, plus a run function that shapes the agent's inputs into template variables and calls `streamRun`. The engine that runs agents is `ai/runtime/` (the run loop, prompts, tool execution, run context, the model interface and the Anthropic provider); it imports nothing from `ai/agents/` or `ai/tools/`. Every run takes a `RunContext` (cancel, deadline, limits, and the confirmation hook) and a `Model`. Tools are `Tool` objects built with `defineTool`, each with a zod input schema and a declared effect (`read`, `write`, `destructive`); browser tools live in `ai/tools/`, grouped by what they act on, and `ai/tools/catalog.ts` fixes their order. `task.md` renders with strict `{{ name }}` substitution: a missing variable fails the render.
 
-`system.md` - The system prompt
-`instructions.md` - The developer prompt (sent as the developer message)
-`task.md` - The user prompt
-`output_schema.json` - The structured output format, if the agent returns structured output; the runtime parses the answer against it
-`config.yaml` - The model and sampling config; `agents/_template/config.yaml` lists every option, and an unknown key fails at load
+We use context engineering (more advanced prompt engineering) for each agent: its prompts sit beside `agent.ts` as markdown.
 
-- Use './.agents/instructions/baritone-agents-overview.md' for more context and or structural overview when working on AI/LLM related task.
-- Keep './.agents/instructions/baritone-agents-overview.md' updated if any changes are made to the agent architecture.
+`system.md` - The system prompt (first cached system block)
+`instructions.md` - Role, objective and examples (second cached system block; the Messages API has no developer role)
+`task.md` - The user prompt, the only templated prompt
+`config.yaml` - The model and request config; `ai/agents/_template/config.yaml` lists every option, and an unknown key fails at load
+
+`system.md` and `instructions.md` are part of the cached prompt prefix and must never contain template variables, timestamps or anything else that changes per request.
+
+- Use './.agents/instructions/hermod-agents-overview.md' for more context and or structural overview when working on AI/LLM related task.
+- Keep './.agents/instructions/hermod-agents-overview.md' updated if any changes are made to the agent architecture.
 
 The system prompt 'system.md' has the following required headers:
 ```md
 # Behavior
 ```
 
-The developer prompt 'instructions.md' has the following required headers:
+The instructions prompt 'instructions.md' has the following required headers:
 ```md
 # Role
 # Objective
 # Examples (optional)
-# Structured Output (Context and Guidance for Structured Output)
-(this header is only required for agents that have an `output_schema.json` file indicating that the agent returns structured output)
 ```
 
 The user prompt 'task.md' has the following required headers:
 ```md
 # Task
 ```
+
+`ai/agents/agents.test.ts` checks these headers and every config for each agent directory.

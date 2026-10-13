@@ -19,6 +19,8 @@ export default defineConfig({
       'downloads',
       'scripting',
       'system.display',
+      // Saved threads can outgrow storage.local's 10 MB default.
+      'unlimitedStorage',
     ],
     host_permissions: ['https://api.anthropic.com/*', '<all_urls>'],
     action: {

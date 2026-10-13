@@ -1,108 +1,135 @@
-// Worker-side owner of the current run. Every change goes through emit(),
-// which folds the event into the state (same reducer as the popup) and
+// Worker-side owner of the current run. It turns the agent runtime's events
+// into RunUpdates, folds each into the state (same reducer as the popup) and
 // broadcasts it to any connected popup.
-import { applyEvent, newRun, type RunEvent, type RunState, type RunStatus, type RunUsage, type SnapshotInfo } from './run';
+import { costOf } from '@/ai/models';
+import { addUsage, ZERO_USAGE, type RunEvent, type Usage } from '@/ai/runtime/events';
+import type { Snapshot } from '@/ai/tools/snapshot';
+import { toolTitle } from '@/ai/tools/catalog';
+import { applyUpdate, newRun, type RunState, type RunStatus, type RunUpdate } from './run';
 
 export class RunController {
   state: RunState;
   private approvals = new Map<string, (approved: boolean) => void>();
+  // API content-block index -> UI part index, for the response being streamed.
+  private blockParts = new Map<number, number>();
+  private usage: Usage = ZERO_USAGE;
+  private rounds = 0;
 
   constructor(
     command: string,
     model: string,
-    private broadcast: (runId: string, event: RunEvent) => void,
+    private broadcast: (runId: string, update: RunUpdate) => void,
   ) {
     this.state = newRun(crypto.randomUUID(), command, model);
   }
 
-  get id() {
-    return this.state.id;
-  }
-
-  private emit(event: RunEvent) {
-    this.state = applyEvent(this.state, event);
-    this.broadcast(this.state.id, event);
+  private emit(update: RunUpdate) {
+    this.state = applyUpdate(this.state, update);
+    this.broadcast(this.state.id, update);
   }
 
   private nextIndex(): number {
     return this.state.messages[1]?.parts.length ?? 0;
   }
 
-  snapshot(snapshot: SnapshotInfo) {
+  snapshot(snapshot: Snapshot) {
     this.emit({ type: 'snapshot', snapshot });
   }
 
-  stepStart() {
-    this.emit({ type: 'step-start' });
-  }
-
-  startReasoning(): number {
-    const index = this.nextIndex();
-    this.emit({ type: 'reasoning-start', index });
-    return index;
-  }
-
-  startText(): number {
-    const index = this.nextIndex();
-    this.emit({ type: 'text-start', index });
-    return index;
-  }
-
-  delta(index: number, delta: string) {
-    if (delta) this.emit({ type: 'delta', index, delta });
-  }
-
-  endPart(index: number) {
-    this.emit({ type: 'part-end', index });
-  }
-
-  toolInputStart(toolCallId: string, toolName: string, title: string) {
-    this.emit({ type: 'tool-input-start', toolCallId, toolName, title });
-  }
-
-  toolInputDelta(toolCallId: string, rawInput: string) {
-    let input: unknown;
-    try {
-      input = JSON.parse(rawInput);
-    } catch {
-      // partial JSON; keep the last good parse
+  /** Applies one event from the agent runtime. */
+  handle(event: RunEvent) {
+    switch (event.type) {
+      case 'turn-started':
+        this.blockParts.clear();
+        this.emit({ type: 'step-start' });
+        break;
+      case 'reasoning-started': {
+        const index = this.nextIndex();
+        this.blockParts.set(event.block, index);
+        this.emit({ type: 'reasoning-start', index });
+        break;
+      }
+      case 'text-started': {
+        const index = this.nextIndex();
+        this.blockParts.set(event.block, index);
+        this.emit({ type: 'text-start', index });
+        break;
+      }
+      case 'delta': {
+        const index = this.blockParts.get(event.block);
+        if (index !== undefined && event.text) this.emit({ type: 'delta', index, delta: event.text });
+        break;
+      }
+      case 'block-finished': {
+        const index = this.blockParts.get(event.block);
+        if (index !== undefined) this.emit({ type: 'part-end', index });
+        break;
+      }
+      case 'tool-input-started':
+        this.emit({ type: 'tool-input-start', toolCallId: event.callId, toolName: event.name, title: toolTitle(event.name) });
+        break;
+      case 'tool-input-delta': {
+        let input: unknown;
+        try {
+          input = JSON.parse(event.json);
+        } catch {
+          // partial JSON; the reducer keeps the last good parse
+        }
+        this.emit({ type: 'tool-input-delta', toolCallId: event.callId, rawInput: event.json, input });
+        break;
+      }
+      case 'response-discarded':
+        this.blockParts.clear();
+        this.failDanglingTools(event.reason);
+        break;
+      case 'response-completed':
+        this.usage = addUsage(this.usage, event.usage);
+        this.rounds++;
+        this.emit({
+          type: 'usage',
+          usage: {
+            rounds: this.rounds,
+            inputTokens: this.usage.inputTokens,
+            outputTokens: this.usage.outputTokens,
+            reasoningTokens: this.usage.thinkingTokens,
+            cacheReadTokens: this.usage.cacheReadTokens,
+            cacheWriteTokens: this.usage.cacheWrite5mTokens + this.usage.cacheWrite1hTokens,
+            contextTokens: event.usage.inputTokens + event.usage.cacheReadTokens + event.usage.cacheWrite5mTokens + event.usage.cacheWrite1hTokens,
+            costUSD: costOf(this.usage, event.model),
+          },
+        });
+        break;
+      case 'tool-call-started':
+        this.emit({ type: 'tool-input-available', toolCallId: event.callId, input: event.input });
+        break;
+      case 'tool-call-finished': {
+        const { result } = event;
+        // A declined call already shows as denied from the approval answer.
+        if (result.status === 'ok') this.emit({ type: 'tool-output', toolCallId: event.callId, output: result.output });
+        else if (result.status === 'error') this.emit({ type: 'tool-error', toolCallId: event.callId, errorText: result.message });
+        break;
+      }
+      case 'run-finished':
+        this.end('done', { summary: event.result.text || 'Done.' });
+        break;
     }
-    this.emit({ type: 'tool-input-delta', toolCallId, rawInput, input });
   }
 
-  toolInputAvailable(toolCallId: string, input: unknown) {
-    this.emit({ type: 'tool-input-available', toolCallId, input });
-  }
-
-  toolOutput(toolCallId: string, output: string) {
-    this.emit({ type: 'tool-output', toolCallId, output });
-  }
-
-  toolError(toolCallId: string, errorText: string) {
-    this.emit({ type: 'tool-error', toolCallId, errorText });
-  }
-
-  usage(usage: RunUsage) {
-    this.emit({ type: 'usage', usage });
-  }
-
-  /** Pauses until the user answers in the popup. Resolves false on timeout or stop. */
-  requestApproval(toolCallId: string, reason: string, signal: AbortSignal, timeoutMs = 120_000): Promise<boolean> {
+  /** Shows the question in the popup and waits for the answer, or false when `signal` aborts. */
+  requestApproval(toolCallId: string, question: string, signal: AbortSignal): Promise<boolean> {
     const approvalId = crypto.randomUUID();
-    this.emit({ type: 'tool-approval-request', toolCallId, approvalId, reason });
+    this.emit({ type: 'tool-approval-request', toolCallId, approvalId, reason: question });
     return new Promise<boolean>((resolve) => {
       const finish = (approved: boolean) => {
-        if (!this.approvals.has(approvalId)) return;
-        this.approvals.delete(approvalId);
-        clearTimeout(timer);
+        if (!this.approvals.delete(approvalId)) return;
         signal.removeEventListener('abort', onAbort);
         this.emit({ type: 'tool-approval-response', toolCallId, approved });
         resolve(approved);
       };
       const onAbort = () => finish(false);
-      const timer = setTimeout(() => finish(false), timeoutMs);
-      signal.addEventListener('abort', onAbort);
       this.approvals.set(approvalId, finish);
+      if (signal.aborted) finish(false);
+      else signal.addEventListener('abort', onAbort);
     });
   }
 
@@ -117,7 +144,7 @@ export class RunController {
         part.type === 'dynamic-tool' &&
         (part.state === 'input-streaming' || part.state === 'input-available' || part.state === 'approval-responded')
       ) {
-        this.toolError(part.toolCallId, errorText);
+        this.emit({ type: 'tool-error', toolCallId: part.toolCallId, errorText });
       }
     }
   }
