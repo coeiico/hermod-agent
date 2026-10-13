@@ -97,7 +97,7 @@ function SteerMessage({ steer }: { steer: SteerData }) {
   return (
     <div className="mb-3 flex flex-col items-end gap-1">
       <Message from="user" className="ml-auto">
-        <MessageContent className="px-3 py-2">
+        <MessageContent>
           <span className="block text-ink-3 text-xs">Steer</span>
           {steer.text}
         </MessageContent>
@@ -233,7 +233,7 @@ export function RunView({
     <div className="flex flex-col gap-4">
       {userMessage && (
         <Message from="user">
-          <MessageContent className="px-3 py-2">
+          <MessageContent>
             {run.resumed && <span className="block text-ink-3 text-xs">Resumed</span>}
             {run.command}
           </MessageContent>

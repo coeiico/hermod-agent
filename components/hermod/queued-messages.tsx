@@ -33,7 +33,7 @@ export function QueuedMessages({
       {queue.map((command, i) => (
         <div key={command.id} className="flex flex-col items-end gap-1">
           <Message from="user" className="ml-auto opacity-70">
-            <MessageContent className="px-3 py-2">
+            <MessageContent>
               {command.resume && <span className="block text-ink-3 text-xs">Resume</span>}
               {command.text}
             </MessageContent>

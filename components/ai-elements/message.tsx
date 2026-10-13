@@ -51,7 +51,8 @@ export const MessageContent = ({
   <div
     className={cn(
       "is-user:dark flex w-fit min-w-0 max-w-full flex-col gap-2 overflow-hidden text-sm",
-      "group-[.is-user]:ml-auto group-[.is-user]:rounded-lg group-[.is-user]:bg-secondary group-[.is-user]:px-4 group-[.is-user]:py-3 group-[.is-user]:text-foreground",
+      // Edited: a slimmer user bubble (was px-4 py-3, gap-2), with its label close to the text.
+      "group-[.is-user]:ml-auto group-[.is-user]:gap-0.5 group-[.is-user]:rounded-lg group-[.is-user]:bg-secondary group-[.is-user]:px-3 group-[.is-user]:py-1.5 group-[.is-user]:text-foreground",
       "group-[.is-assistant]:text-foreground",
       className
     )}
