@@ -275,6 +275,11 @@ try {
   const popup = await cdp.attach(popupTarget);
   await cdp.send('Emulation.setDeviceMetricsOverride', { width: 420, height: 1400, deviceScaleFactor: 1, mobile: false }, popup);
   await sleep(1500);
+  // The top of the thread: the user's message bubble.
+  await cdp.evaluate(popup, `(() => { document.querySelector('.is-user')?.scrollIntoView({ block: 'start' }); return true; })()`);
+  await sleep(300);
+  const topShot = await cdp.send('Page.captureScreenshot', { format: 'png', clip: { x: 0, y: 0, width: 420, height: 320, scale: 1 } }, popup);
+  writeFileSync(join(OUT, 'message.png'), Buffer.from(topShot.data, 'base64'));
   // Open the web task card's steps.
   await cdp.evaluate(popup, `(() => { const t = [...document.querySelectorAll('button')].find((b) => b.textContent.includes('Web task')); t?.click(); return !!t; })()`);
   await sleep(500);
@@ -369,6 +374,13 @@ try {
   );
   const cardShot = await cdp.send('Page.captureScreenshot', { format: 'png', clip: { ...card, scale: 1 } }, options);
   writeFileSync(join(OUT, 'settings-threads.png'), Buffer.from(cardShot.data, 'base64'));
+  check(/Popup[\s\S]*Alt\+Space[\s\S]*Over the window in use[\s\S]*Alt\+Shift\+Space/.test(cardText), 'Settings shows both keyboard shortcuts');
+  const keys = await cdp.evaluate(
+    options,
+    `(() => { const r = [...document.querySelectorAll('[data-slot="card"]')].find((c) => c.innerText.startsWith('Keyboard shortcuts')).getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height }; })()`,
+  );
+  const keysShot = await cdp.send('Page.captureScreenshot', { format: 'png', clip: { ...keys, scale: 1 } }, options);
+  writeFileSync(join(OUT, 'settings-shortcuts.png'), Buffer.from(keysShot.data, 'base64'));
   const all = await cdp.evaluate(ctl, `chrome.runtime.sendMessage({ type: 'clear-threads', which: 'all' })`);
   const left = (await cdp.evaluate(ctl, `chrome.runtime.sendMessage({ type: 'list-threads' })`)).threads;
   check(all.ok && all.cleared === listed - 1 && all.keptRunning === 1 && left.length === 1, `clearing all threads kept only the running one (${JSON.stringify(all)})`);
