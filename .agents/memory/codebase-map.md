@@ -71,4 +71,4 @@ Where things live in Hermod Agent, one line each. Read it to find your way befor
 | `.agents/instructions/` | How code is written and structured, and how agents are built |
 | `.agents/plans/` | Plans the user asked for |
 | `.agents/memory/` | This file and the other agent memory |
-| `todo.md` | Ideas not yet planned |
+| `INBOX.md` | To-dos and ideas not yet planned |
