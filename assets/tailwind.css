@@ -10,6 +10,10 @@
 @import "@fontsource/petrona/latin-600.css";
 @import "@fontsource/petrona/latin-700.css";
 
+/* Streamdown styles the Markdown it renders (list bullets, headings, tables) with
+   Tailwind classes in its own bundle, so Tailwind has to scan it. */
+@source "../node_modules/streamdown/dist/*.js";
+
 @custom-variant dark (&:is(.dark *));
 
 @theme {
