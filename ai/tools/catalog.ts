@@ -1,6 +1,7 @@
 // Every browser tool, in a fixed order. The order is part of the prompt-cache
 // prefix: append new tools at the end and never reorder.
 import type { Tool } from '../runtime/tools';
+import { exportConversation } from './chat-export';
 import {
   controlDownloads,
   createBookmark,
@@ -78,6 +79,7 @@ export const BROWSER_TOOLS: readonly Tool[] = [
   deleteHistory,
   inspectElement,
   screenshotTab,
+  exportConversation,
 ];
 
 /** The tools a web task works with inside its own pages, in a fixed order (append only, as above). */

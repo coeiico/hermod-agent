@@ -11,6 +11,7 @@ Hermod is a Manifest V3 extension for Chromium browsers (Chrome, Edge, Brave, Vi
 - **Tabs and windows.** "Move this tab to the window with my GitHub stuff." "Close all YouTube tabs." "Put this window on the left screen, maximised." "Sort these tabs by site." "Copy these tabs as a Markdown list."
 - **Your library.** "Bookmark these three tabs into a Research folder." "Reopen the window I just closed." "Delete today's history from example.com." "Pause my downloads."
 - **Reading pages.** "Which of these tabs mentions pricing?" "List the links on this page." "What font is the heading on this page?"
+- **Exporting AI chats.** "Export this chat to Markdown." "Save this conversation to my downloads." Or type `/export_chat_to_markdown`, which runs without the model, free. Works on ChatGPT and Claude.ai conversations: the whole conversation is saved word for word, each message in a `<user>` or `<assistant>` tag, without passing through the model.
 - **Work inside websites.** "Find a USB-C hub under $40 on this shop and add it to my cart." Hermod hands this to a web task, which works in its own window while you keep browsing. You can watch it, steer it with a follow-up message, or stop it.
 
 Commands come in threads, so a follow-up like "close those" or "undo that" knows what you mean. Threads are saved, and you can come back to one later.

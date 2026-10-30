@@ -109,7 +109,7 @@ export function screenshotToPage(tabId: number, x: number, y: number): { x: numb
   return { x: x / shot.scale / shot.dpr, y: y / shot.scale / shot.dpr };
 }
 
-async function toBase64(blob: Blob): Promise<string> {
+export async function toBase64(blob: Blob): Promise<string> {
   const bytes = new Uint8Array(await blob.arrayBuffer());
   let binary = '';
   for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));

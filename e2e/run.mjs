@@ -345,6 +345,25 @@ try {
   const unlockedAgain = await cdp.evaluate(popup, `!!document.querySelector('[aria-label="Lock (forget the unlocked key)"]') && !document.querySelector('[role="dialog"]')`);
   check(unlockedAgain, 'unlocking from the dialog unlocks the key and closes it');
 
+  // Slash commands: typing a slash offers them, Tab completes, Enter runs it in the
+  // worker. The tab in front isn't a ChatGPT or Claude chat, so the export says so.
+  const key = (keyName, code, text) =>
+    cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', key: keyName, code: keyName, windowsVirtualKeyCode: code, ...(text ? { text } : {}) }, popup);
+  await cdp.evaluate(popup, `(() => { document.querySelector('textarea').focus(); return true; })()`);
+  await cdp.send('Input.insertText', { text: '/exp' }, popup);
+  await sleep(200);
+  const menu = await cdp.evaluate(popup, `document.querySelector('[aria-label="Slash commands"]')?.innerText ?? ''`);
+  check(/\/export_chat_to_markdown/.test(menu), `typing a slash offers the slash commands (${menu})`);
+  await key('Tab', 9);
+  await sleep(100);
+  const completed = await cdp.evaluate(popup, `document.querySelector('textarea').value`);
+  check(completed === '/export_chat_to_markdown', `Tab completes the slash command (${completed})`);
+  await key('Enter', 13, '\r');
+  await sleep(800);
+  const notice = await cdp.evaluate(popup, `[...document.querySelectorAll('[role="alert"]')].map((a) => a.innerText).join(' | ')`);
+  check(/ChatGPT or Claude conversation|No browser tab/.test(notice), `the slash command runs and reports why it could not export (${notice})`);
+  await cdp.evaluate(popup, `(() => { document.querySelector('[role="alert"] [aria-label="Dismiss"]')?.click(); return true; })()`);
+
   // The thread list, with a thread working: its dot sits beside the title without moving it.
   await send({ type: 'new-thread' });
   await sleep(200);

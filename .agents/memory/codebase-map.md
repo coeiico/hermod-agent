@@ -33,6 +33,7 @@ Where things live in Hermod Agent, one line each. Read it to find your way befor
 | `ai/tools/resolve.ts` | Turns model-written IDs into real tabs, windows and bookmarks; the trust boundary for tool input |
 | `ai/tools/snapshot.ts` | The browser snapshot each request opens with |
 | `ai/tools/clipboard.ts` | Clipboard writes through the offscreen document |
+| `ai/tools/chat-export.ts`, `chat-transcript.ts` | Exporting a ChatGPT or Claude chat as Markdown: the tool, and the site-specific parsing |
 
 ## The rest of the extension (`lib/`)
 
@@ -41,6 +42,7 @@ Where things live in Hermod Agent, one line each. Read it to find your way befor
 | `lib/run.ts`, `lib/run-controller.ts` | UI run state shared by worker and popup, and the adapter from runtime events to it |
 | `lib/use-run.ts` | Popup side of the worker connection |
 | `lib/rpc.ts` | One-off request/response messages from the popup and settings page to the worker |
+| `lib/slash-commands.ts` | The prompt's slash commands (`/export_chat_to_markdown`): names, matching and parsing; the worker runs them in `runSlashCommand` |
 | `lib/threads.ts` | Saved threads in `storage.local`, and the earlier commands each new command is given as context |
 | `lib/command-queue.ts` | Commands waiting to run, per thread |
 | `lib/web-tasks.ts` | The worker's side of the web tasks a command starts |
@@ -54,7 +56,7 @@ Where things live in Hermod Agent, one line each. Read it to find your way befor
 
 | Path | What it is |
 | --- | --- |
-| `components/hermod/` | Hermod's own components: run view, thread list, unlock dialog, usage meter, queued messages |
+| `components/hermod/` | Hermod's own components: run view, thread list, unlock dialog, usage meter, queued messages, slash command menu |
 | `components/ui/` | shadcn primitives, carrying the Baritone recipes |
 | `components/ai-elements/` | Vendored AI Elements (edited: no remote logos, JSON-only Shiki, no Streamdown plugins) |
 | `assets/tailwind.css` | Theme: the Baritone design language (tokens, type and control scale, both themes) |

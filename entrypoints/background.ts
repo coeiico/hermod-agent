@@ -8,7 +8,9 @@
 import { streamBrowserCommand } from '@/ai/agents/interactive/browser_command/agent';
 import { createRunContext, RunCancelled, SteeringInbox, type Limits } from '@/ai/runtime/context';
 import { AnthropicModel, createAnthropicClient } from '@/ai/runtime/providers/anthropic';
-import { buildSnapshot } from '@/ai/tools/snapshot';
+import { exportChat } from '@/ai/tools/chat-export';
+import { plural } from '@/ai/tools/resolve';
+import { buildSnapshot, isHermodTab, isPanelTab } from '@/ai/tools/snapshot';
 import { CommandQueue } from '@/lib/command-queue';
 import * as keystore from '@/lib/keystore';
 import type { RpcRequest, RpcResponse } from '@/lib/rpc';
@@ -26,6 +28,7 @@ import { RunController } from '@/lib/run-controller';
 import { overallActivity, showActivity } from '@/lib/run-indicator';
 import { popOut, reattach, watchDetachedWindow } from '@/lib/detached-window';
 import { getSettings, onSettingsChanged } from '@/lib/settings';
+import type { SlashCommandName } from '@/lib/slash-commands';
 import * as threads from '@/lib/threads';
 import { WrongPassphraseError } from '@/lib/vault';
 import { WebTasks } from '@/lib/web-tasks';
@@ -454,6 +457,23 @@ export default defineBackground({
         case 'reattach':
           await reattach();
           return { ok: true };
+        case 'slash-command':
+          return runSlashCommand(msg.name);
+      }
+    }
+
+    // ------------------------------------------------------------ slash commands
+
+    async function runSlashCommand(name: SlashCommandName): Promise<RpcResponse> {
+      // The tab the user is looking at, by the snapshot's rules: never Hermod itself or a Vivaldi web panel.
+      const window = await browser.windows.getLastFocused({ windowTypes: ['normal'], populate: true }).catch(() => undefined);
+      const tab = window?.tabs?.find((t) => t.active && !isHermodTab(t) && !isPanelTab(t));
+      if (!tab?.id) return { ok: false, error: 'No browser tab is in front to run the command on.' };
+      switch (name) {
+        case 'export_chat_to_markdown': {
+          const saved = await exportChat(tab.id);
+          return { ok: true, message: `Saved "${saved.title}" (${plural(saved.messages, 'message')}) to downloads as ${saved.filename}.` };
+        }
       }
     }
   },

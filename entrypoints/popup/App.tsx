@@ -13,6 +13,7 @@ import { ActivityDot } from '@/components/hermod/activity-dot';
 import { OptionMenu } from '@/components/hermod/option-menu';
 import { QueuedMessages } from '@/components/hermod/queued-messages';
 import { RunView } from '@/components/hermod/run-view';
+import { SlashMenu } from '@/components/hermod/slash-menu';
 import { ThreadList } from '@/components/hermod/thread-list';
 import { UnlockDialog } from '@/components/hermod/unlock-dialog';
 import { UsageMeter } from '@/components/hermod/usage-meter';
@@ -25,6 +26,7 @@ import { isDetachedPage, isQuickPage } from '@/lib/detached-window';
 import { canResume, type RunUsage, type ThreadActivity } from '@/lib/run';
 import { getKeyStatus, rpc, type KeyStatus } from '@/lib/rpc';
 import { APPROVAL_MODE_OPTIONS, DEFAULT_SETTINGS, getSettings, onSettingsChanged, updateSettings, type Settings } from '@/lib/settings';
+import { matchSlashCommands, resolveSlashCommand } from '@/lib/slash-commands';
 import { useRun } from '@/lib/use-run';
 import {
   KeyRoundIcon,
@@ -77,7 +79,11 @@ function HeaderButton({ label, onClick, children }: { label: string; onClick: ()
   );
 }
 
-/** The prompt. While a command runs, sending queues the message (or steers it, from the queue) and an empty prompt's button stops the command. */
+/**
+ * The prompt. While a command runs, sending queues the message (or steers it,
+ * from the queue) and an empty prompt's button stops the command. Typing a
+ * slash offers the slash commands; Tab completes the first.
+ */
 function Composer({
   running,
   disabled,
@@ -93,30 +99,47 @@ function Composer({
 }) {
   const { textInput } = usePromptInputController();
   const hasText = !!textInput.value.trim();
+  const slashMatches = matchSlashCommands(textInput.value);
   return (
-    <PromptInput
-      onSubmit={({ text }) => {
-        if (text.trim()) onSubmit(text.trim());
-      }}
-    >
-      <PromptInputBody>
-        <PromptInputTextarea
-          autoFocus
-          disabled={disabled}
-          className="min-h-12"
-          placeholder={placeholder}
+    <>
+      {slashMatches.length > 0 && (
+        <SlashMenu
+          commands={slashMatches}
+          onPick={(name) => {
+            textInput.clear();
+            onSubmit(`/${name}`);
+          }}
         />
-      </PromptInputBody>
-      <PromptInputFooter className="justify-end">
-        <PromptInputSubmit
-          variant="ghost"
-          className="text-ink hover:text-ink disabled:text-ink-3"
-          status={running && !hasText ? 'streaming' : 'ready'}
-          onStop={onStop}
-          disabled={disabled || (!running && !hasText)}
-        />
-      </PromptInputFooter>
-    </PromptInput>
+      )}
+      <PromptInput
+        onSubmit={({ text }) => {
+          if (text.trim()) onSubmit(text.trim());
+        }}
+      >
+        <PromptInputBody>
+          <PromptInputTextarea
+            autoFocus
+            disabled={disabled}
+            className="min-h-12"
+            placeholder={placeholder}
+            onKeyDown={(e) => {
+              if (e.key !== 'Tab' || e.shiftKey || !slashMatches.length) return;
+              e.preventDefault();
+              textInput.setInput(`/${slashMatches[0]!.name}`);
+            }}
+          />
+        </PromptInputBody>
+        <PromptInputFooter className="justify-end">
+          <PromptInputSubmit
+            variant="ghost"
+            className="text-ink hover:text-ink disabled:text-ink-3"
+            status={running && !hasText ? 'streaming' : 'ready'}
+            onStop={onStop}
+            disabled={disabled || (!running && !hasText)}
+          />
+        </PromptInputFooter>
+      </PromptInput>
+    </>
   );
 }
 
@@ -183,6 +206,8 @@ export default function App() {
   const [view, setView] = useState<'run' | 'threads'>('run');
   // Unlocking from the lock button, before any command needs the key.
   const [unlocking, setUnlocking] = useState(false);
+  // What the last slash command did. They run in the worker without the model, so they leave nothing in the thread.
+  const [notice, setNotice] = useState<{ text: string; failed: boolean } | null>(null);
 
   const refreshKeyStatus = useCallback(() => void getKeyStatus().then(setKeyStatus), []);
 
@@ -209,9 +234,20 @@ export default function App() {
     };
   }, [refreshKeyStatus]);
 
+  const runSlashCommand = async (text: string) => {
+    setNotice(null);
+    try {
+      const res = await rpc({ type: 'slash-command', name: resolveSlashCommand(text) });
+      setNotice(res.ok ? { text: res.message ?? 'Done.', failed: false } : { text: res.error, failed: true });
+    } catch (err) {
+      setNotice({ text: err instanceof Error ? err.message : String(err), failed: true });
+    }
+  };
+
   const submit = (text: string) => {
     setView('run');
-    start(text);
+    if (text.startsWith('/')) void runSlashCommand(text);
+    else start(text);
   };
 
   const noKey = keyStatus !== null && !keyStatus.hasVault;
@@ -344,6 +380,16 @@ export default function App() {
               <AlertDescription className="flex items-center justify-between gap-2">
                 <span>{error}</span>
                 <Button size="icon-sm" variant="ghost" onClick={clearError} aria-label="Dismiss">
+                  <XIcon />
+                </Button>
+              </AlertDescription>
+            </Alert>
+          )}
+          {notice && (
+            <Alert variant={notice.failed ? 'destructive' : 'default'} className="py-2">
+              <AlertDescription className="flex items-center justify-between gap-2">
+                <span>{notice.text}</span>
+                <Button size="icon-sm" variant="ghost" onClick={() => setNotice(null)} aria-label="Dismiss">
                   <XIcon />
                 </Button>
               </AlertDescription>

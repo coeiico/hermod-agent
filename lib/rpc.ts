@@ -1,6 +1,7 @@
 // One-off request/response messages from the popup and settings page to the
 // background worker. The worker is the only place the API key is decrypted
 // or used; these messages carry passphrases in, never the key out.
+import type { SlashCommandName } from './slash-commands';
 import type { ThreadSummary } from './threads';
 
 export type RpcRequest =
@@ -15,7 +16,9 @@ export type RpcRequest =
   /** `stale`: every thread not started today. Threads with a command running are kept. */
   | { type: 'clear-threads'; which: 'all' | 'stale' }
   | { type: 'pop-out' }
-  | { type: 'reattach' };
+  | { type: 'reattach' }
+  /** Runs a slash command on the tab the user is looking at; `message` says what happened. */
+  | { type: 'slash-command'; name: SlashCommandName };
 
 export type RpcResponse =
   | {
@@ -28,6 +31,7 @@ export type RpcResponse =
       /** For clear-threads: how many were deleted, and how many were kept because a command is running in them. */
       cleared?: number;
       keptRunning?: number;
+      message?: string;
     }
   | { ok: false; error: string };
 

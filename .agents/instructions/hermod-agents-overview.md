@@ -26,6 +26,8 @@ ai/
     page-actions.ts         click, click_at, type_text, select_option, press_key, scroll, wait_for
     page-guardrails.ts      refusal() and risk(): the hard-coded rules for acting in a page
     task-pages.ts           A web task's own pages: list_pages, open_page, go_to, go_back, show_page, close_page
+    chat-export.ts          export_conversation: saves a ChatGPT or Claude chat to downloads, fetched inside its tab
+    chat-transcript.ts      Chat URLs, each site's conversation JSON, and the Markdown transcript (pure, tested)
     catalog.ts              BROWSER_TOOLS and WEB_TASK_TOOLS, each in a fixed order
   agents/
     _template/              Copy this to start an agent; its config.yaml documents every option
