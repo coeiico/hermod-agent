@@ -11,8 +11,6 @@ export interface Settings {
   cacheTtl: CacheTtl;
   /** When Hermod asks before acting. Picked in the popup, below the prompt. */
   approvalMode: ApprovalMode;
-  /** True while the vault is encrypted with DEFAULT_PASSPHRASE. */
-  usesDefaultPassphrase: boolean;
 }
 
 // The agent's config.yaml is the single source of the defaults.
@@ -23,7 +21,6 @@ export const DEFAULT_SETTINGS: Settings = {
   effort: agentDefaults.effort,
   cacheTtl: agentDefaults.cache_ttl,
   approvalMode: 'auto',
-  usesDefaultPassphrase: true,
 };
 
 export const APPROVAL_MODE_OPTIONS: { value: ApprovalMode; label: string; description: string; danger?: boolean }[] = [

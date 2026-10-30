@@ -129,7 +129,7 @@ try {
   const { targetId: ctlTarget } = await cdp.send('Target.createTarget', { url: `chrome-extension://${extId}/options.html` });
   const ctl = await cdp.attach(ctlTarget);
   await sleep(800);
-  const saved = await cdp.evaluate(ctl, `chrome.runtime.sendMessage({ type: 'save-key', apiKey: 'sk-ant-test-local-only', passphrase: 'dank memes' })`);
+  const saved = await cdp.evaluate(ctl, `chrome.runtime.sendMessage({ type: 'save-key', apiKey: 'sk-ant-test-local-only', passphrase: 'e2e passphrase' })`);
   check(saved?.ok === true, 'saved a test key in the vault');
   await cdp.evaluate(
     ctl,
@@ -339,7 +339,7 @@ try {
   const dialogOpen = await cdp.evaluate(popup, `!!document.querySelector('[role="dialog"] input[type="password"]')`);
   check(dialogOpen, 'clicking the locked button opens the unlock dialog');
   await cdp.evaluate(popup, `(() => { document.querySelector('[role="dialog"] input[type="password"]').focus(); return true; })()`);
-  await cdp.send('Input.insertText', { text: 'dank memes' }, popup);
+  await cdp.send('Input.insertText', { text: 'e2e passphrase' }, popup);
   await cdp.evaluate(popup, `(() => { [...document.querySelectorAll('[role="dialog"] button')].find((b) => b.textContent.includes('Unlock'))?.click(); return true; })()`);
   await sleep(800);
   const unlockedAgain = await cdp.evaluate(popup, `!!document.querySelector('[aria-label="Lock (forget the unlocked key)"]') && !document.querySelector('[role="dialog"]')`);

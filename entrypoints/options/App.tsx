@@ -1,4 +1,3 @@
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -22,8 +21,7 @@ import { getKeyStatus, rpc, type KeyStatus } from '@/lib/rpc';
 import { APPROVAL_MODE_OPTIONS, DEFAULT_SETTINGS, getSettings, onSettingsChanged, updateSettings, type Settings } from '@/lib/settings';
 import type { ThreadSummary } from '@/lib/threads';
 import { OPEN_COMMAND, POPUP_COMMAND } from '@/lib/detached-window';
-import { DEFAULT_PASSPHRASE } from '@/lib/vault';
-import { AlertTriangleIcon, CheckCircle2Icon, KeyRoundIcon, LockIcon, LockOpenIcon, XCircleIcon } from 'lucide-react';
+import { CheckCircle2Icon, KeyRoundIcon, LockIcon, LockOpenIcon, XCircleIcon } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 
 type Feedback = { ok: boolean; text: string } | null;
@@ -50,7 +48,7 @@ function Field({ id, label, hint, children }: { id: string; label: string; hint?
 
 function KeyCard({ status, refresh }: { status: KeyStatus; refresh: () => void }) {
   const [apiKey, setApiKey] = useState('');
-  const [passphrase, setPassphrase] = useState(DEFAULT_PASSPHRASE);
+  const [passphrase, setPassphrase] = useState('');
   const [saveFeedback, setSaveFeedback] = useState<Feedback>(null);
   const [testFeedback, setTestFeedback] = useState<Feedback>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -126,7 +124,7 @@ function KeyCard({ status, refresh }: { status: KeyStatus; refresh: () => void }
           <Field
             id="passphrase"
             label="Passphrase"
-            hint={`Used to encrypt the key on save, and to unlock or test it while locked. Prefilled with the default "${DEFAULT_PASSPHRASE}".`}
+            hint="Choose your own. It encrypts the key when you save it, and you'll need it to unlock or test the key while it's locked."
           >
             <Input id="passphrase" type="password" value={passphrase} onChange={(e) => setPassphrase(e.target.value)} />
           </Field>
@@ -508,17 +506,6 @@ export default function App() {
             <p className="mt-1 max-w-2xl text-[12px] text-ink-3 leading-4">Settings and API keys for the Hermod browser agent.</p>
           </div>
         </header>
-
-        {status?.hasVault && status.usesDefaultPassphrase && (
-          <Alert variant="warning">
-            <AlertTriangleIcon />
-            <AlertTitle>You're using the default passphrase</AlertTitle>
-            <AlertDescription>
-              "{DEFAULT_PASSPHRASE}" is written in Hermod's source code, so while it's in use the encryption doesn't protect
-              your key. Change it below.
-            </AlertDescription>
-          </Alert>
-        )}
 
         {status && <KeyCard status={status} refresh={refresh} />}
         <ModeCard settings={settings} />

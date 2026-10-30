@@ -25,7 +25,6 @@ export type RpcResponse =
       ok: true;
       hasVault?: boolean;
       unlocked?: boolean;
-      usesDefaultPassphrase?: boolean;
       models?: string[];
       threads?: ThreadSummary[];
       /** For clear-threads: how many were deleted, and how many were kept because a command is running in them. */
@@ -38,7 +37,6 @@ export type RpcResponse =
 export interface KeyStatus {
   hasVault: boolean;
   unlocked: boolean;
-  usesDefaultPassphrase: boolean;
 }
 
 export async function rpc(request: RpcRequest): Promise<RpcResponse> {
@@ -55,6 +53,5 @@ export async function getKeyStatus(): Promise<KeyStatus> {
   return {
     hasVault: res.hasVault ?? false,
     unlocked: res.unlocked ?? false,
-    usesDefaultPassphrase: res.usesDefaultPassphrase ?? true,
   };
 }

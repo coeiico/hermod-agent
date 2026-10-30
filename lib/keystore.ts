@@ -2,8 +2,7 @@
 // decrypted key lives only in storage.session (memory, cleared when the
 // browser closes). The plain key is never written to storage.local, never
 // logged, and never sent to content scripts.
-import { updateSettings } from './settings';
-import { DEFAULT_PASSPHRASE, decryptVault, encryptSecret, type Vault } from './vault';
+import { decryptVault, encryptSecret, type Vault } from './vault';
 
 const VAULT_KEY = 'apiKeyVault';
 const SESSION_KEY = 'unlockedApiKey';
@@ -35,7 +34,6 @@ export async function saveKey(apiKey: string, passphrase: string): Promise<void>
   const vault = await encryptSecret(trimmed, passphrase);
   await browser.storage.local.set({ [VAULT_KEY]: vault });
   await browser.storage.session.set({ [SESSION_KEY]: trimmed });
-  await updateSettings({ usesDefaultPassphrase: passphrase === DEFAULT_PASSPHRASE });
 }
 
 /** Decrypts with the passphrase. Throws WrongPassphraseError on a bad passphrase. */

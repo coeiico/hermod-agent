@@ -2,12 +2,6 @@
 // PBKDF2-SHA256 derives an AES-GCM-256 key; a fresh salt and IV are generated
 // on every save. A wrong passphrase makes AES-GCM authentication fail.
 
-/**
- * Placeholder passphrase. While the vault uses it, the encryption protects
- * nothing (it is in the source). Remove before any public release.
- */
-export const DEFAULT_PASSPHRASE = 'dank memes';
-
 export interface Vault {
   v: 1;
   kdf: 'PBKDF2-SHA256';

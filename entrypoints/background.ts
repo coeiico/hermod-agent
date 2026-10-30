@@ -385,15 +385,12 @@ export default defineBackground({
 
     async function handleRpc(msg: RpcRequest): Promise<RpcResponse> {
       switch (msg.type) {
-        case 'status': {
-          const settings = await getSettings();
+        case 'status':
           return {
             ok: true,
             hasVault: await keystore.hasVault(),
             unlocked: (await keystore.getUnlockedKey()) !== undefined,
-            usesDefaultPassphrase: settings.usesDefaultPassphrase,
           };
-        }
         case 'unlock':
           try {
             await keystore.unlock(msg.passphrase);
