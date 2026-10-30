@@ -17,7 +17,8 @@
     "compile": "tsc --noEmit",
     "postinstall": "wxt prepare",
     "test": "vitest run",
-    "e2e": "wxt build && node e2e/run.mjs"
+    "e2e": "wxt build && node e2e/run.mjs",
+    "screenshots": "wxt build && node e2e/screenshots.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.133.0",

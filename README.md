@@ -6,6 +6,12 @@ Tell your browser what you want in plain language, and Hermod does it.
 
 Hermod is a Manifest V3 extension for Chromium browsers (Chrome, Edge, Brave, Vivaldi, Opera and others). Type a command into its prompt, and a Claude agent carries it out with your tabs, windows, bookmarks, history and downloads, or works through a website for you in a window of its own.
 
+<p align="center">
+  <img src="assets/screenshots/reading-pages.png" alt="Hermod reading three pricing pages to find which note apps have a free plan" width="32%">
+  <img src="assets/screenshots/web-task.png" alt="Hermod handing a shopping task to a web task that adds a bag of coffee to the cart" width="32%">
+  <img src="assets/screenshots/threads.png" alt="Hermod's thread list, with four earlier commands to come back to" width="32%">
+</p>
+
 ## What it can do
 
 - **Tabs and windows.** Open, close, move, sort, pin, mute and reload tabs; merge windows, or move and resize them across your screens; copy a set of tabs as a list.
@@ -81,9 +87,10 @@ npm run dev      # rebuild on change; reload the extension to pick up worker cha
 npm test         # unit tests
 npm run compile  # type check
 npm run e2e      # end-to-end run in headless Chromium against a local test shop
+npm run screenshots  # the README screenshots, into .output/screenshots/
 ```
 
-`npm run e2e` needs Playwright's Chromium (`npx playwright install chromium`) or a browser path in `HERMOD_E2E_CHROME`. It answers with a scripted fake Claude API, so it spends no API credit.
+`npm run e2e` needs Playwright's Chromium (`npx playwright install chromium`) or a browser path in `HERMOD_E2E_CHROME`. It answers with a scripted fake Claude API, so it spends no API credit. `npm run screenshots` uses the same setup with made-up tabs and commands; copy the shots you want into `assets/screenshots/`.
 
 Contributor and agent notes live in [CLAUDE.md](CLAUDE.md) and [.agents/](.agents/): how agents are built is in [.agents/instructions/hermod-agents-overview.md](.agents/instructions/hermod-agents-overview.md), and where everything lives is in [.agents/memory/codebase-map.md](.agents/memory/codebase-map.md).
 

@@ -62,6 +62,7 @@ Where things live in Hermod Agent, one line each. Read it to find your way befor
 | `components/ai-elements/` | Vendored AI Elements (edited: no remote logos, JSON-only Shiki, no Streamdown plugins) |
 | `assets/tailwind.css` | Theme: the Baritone design language (tokens, type and control scale, both themes) |
 | `assets/brand/` | Logo master, README banner, concepts, and how the icons were made |
+| `assets/screenshots/` | The popup screenshots in the README, made by `npm run screenshots` |
 | `public/icon/` | Icon sizes generated from the master (`npm run brand:icons`) |
 
 ## Tests and tooling
@@ -69,7 +70,7 @@ Where things live in Hermod Agent, one line each. Read it to find your way befor
 | Path | What it is |
 | --- | --- |
 | `*.test.ts` | Unit tests beside the code they cover (`npm test`) |
-| `e2e/` | End-to-end run in headless Chromium: a local test shop (`site.mjs`), a scripted fake Claude API (`model.mjs`), a CDP client (`cdp.mjs`) |
+| `e2e/` | End-to-end run in headless Chromium: a local test shop (`site.mjs`), a scripted fake Claude API (`model.mjs`), a CDP client (`cdp.mjs`); `screenshots.mjs` makes the README screenshots from made-up tabs and scripted commands |
 | `scripts/generate-icons.sh` | Regenerates `public/icon/` from the brand master |
 | `.agents/instructions/` | How code is written and structured, and how agents are built |
 | `.agents/plans/` | Plans the user asked for |
