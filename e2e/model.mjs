@@ -153,10 +153,17 @@ export function createModel(log, base) {
     return respond('claude-sonnet-5-5', [text('Ready for you to pay.')], 'end_turn');
   }
 
+  /** The guess at the next command, made after each finished command: a trip to the cart after the shop, else none. */
+  function guess(body) {
+    const thread = textOf(body.messages[0].content);
+    return respond('claude-haiku-5-5', [text(/coffee/i.test(thread) ? 'Go to the cart' : 'NONE')], 'end_turn');
+  }
+
   return {
     state,
     reply(body) {
       const system = body.system.map((b) => b.text).join('\n');
+      if (system.includes("You only guess the user's next command")) return guess(body);
       return system.includes("You are Hermod's web task agent") ? task(body) : main(body);
     },
     commandOf(body) {

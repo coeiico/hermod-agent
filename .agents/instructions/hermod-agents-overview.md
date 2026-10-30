@@ -39,14 +39,15 @@ ai/
       task.md               # Task: the opening user message, the only templated prompt
 ```
 
-There are two agents:
+There are three agents:
 
 - `agents/interactive/browser_command` carries out a typed command. It changes the browser around pages itself, and hands work inside pages to a web task with its delegation tools (`delegation.ts`: start, wait for, steer and stop a web task).
 - `agents/delegated/web_task` works inside pages in its own window, from a brief, and ends with `report_result`. It runs on its own model (Sonnet), not the one picked in the popup.
+- `agents/background/next_command` guesses the user's next command after a command finishes, for the prompt's hint (Tab fills it in). It has no tools and always runs on Haiku. The worker runs it after every command that ends `done`, with a fresh snapshot and the thread's turns, and saves the guess on the thread (`Thread.nextCommand`); the next finished turn clears it, and a guess that arrives after a newer turn is dropped.
 
 ## Naming
 
-- The role folder says what kind of job the agent does: `interactive` for agents a user talks to directly, `delegated` for agents another agent starts and waits on. Add a role only when an agent doesn't fit an existing one, for example `background` for scheduled jobs.
+- The role folder says what kind of job the agent does: `interactive` for agents a user talks to directly, `delegated` for agents another agent starts and waits on, `background` for agents the worker runs on its own (nobody waits on them). Add a role only when an agent doesn't fit an existing one.
 - The name says what the agent produces or decides, read on its own: `browser_command`, not `agent2` or `helper`.
 - `config.yaml`'s `id` is the name with a version suffix (`browser_command.v1`). Bump the version when a change to the prompts or config changes behaviour, so logs show which version ran.
 
@@ -97,4 +98,4 @@ Each run is a fresh API conversation; its message history lives only inside the 
 
 - `npm test` runs the unit tests: the runner against a scripted fake model, every agent's config and prompts, the page guardrails, the command queue, the thread store and the key vault.
 - `npm run compile` type-checks; `npm run build` builds the extension.
-- `npm run e2e` builds and runs `e2e/run.mjs`: the built extension in headless Chromium, a local test shop (`e2e/site.mjs`), and a scripted fake Claude API (`e2e/model.mjs`) answering through CDP request interception. It covers delegation, steering, the queue, the guardrails, approvals inside a web task, concurrent threads and the popup's rendering. When an agent's tools or the delegation flow change, update `model.mjs`'s scripts to match.
+- `npm run e2e` builds and runs `e2e/run.mjs`: the built extension in headless Chromium, a local test shop (`e2e/site.mjs`), and a scripted fake Claude API (`e2e/model.mjs`) answering through CDP request interception. It covers delegation, steering, the queue, the guardrails, approvals inside a web task, concurrent threads and the popup's rendering. When an agent's tools or the delegation flow change, update `model.mjs`'s scripts to match. The fake models (`model.mjs`, and `screenshots.mjs` for the README screenshots) tell the agents apart by text in their `system.md`, so keep those phrases or update the matches.

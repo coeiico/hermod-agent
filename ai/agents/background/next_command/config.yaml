@@ -1,0 +1,9 @@
+id: next_command.v1
+# Runs after every finished command, so it stays on the fast, cheap model
+# whatever the user picks for commands, and thinks as little as it can.
+model: claude-haiku-5-5
+effort: low
+# Only the command is shown; nothing reads the thinking.
+thinking_display: omitted
+max_tokens: 2000
+cache_ttl: 5m

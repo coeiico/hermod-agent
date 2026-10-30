@@ -80,6 +80,19 @@ describe('thread store writes', () => {
     const [after] = await threads.listThreads();
     expect(after!.lastViewedAt!).toBeGreaterThan(before!.lastEndedAt!);
   });
+
+  it('keeps a guess at the next command until the next turn, and drops one that guessed after an older turn', async () => {
+    const t = await threads.createThread('a');
+    const first = finishedRun('one');
+    await threads.appendTurn(t.id, first);
+    expect((await threads.setNextCommand(t.id, first.id, 'close those'))?.nextCommand).toBe('close those');
+    expect((await threads.getThread(t.id))?.nextCommand).toBe('close those');
+
+    await threads.appendTurn(t.id, finishedRun('two'));
+    expect((await threads.getThread(t.id))?.nextCommand).toBeUndefined();
+    expect(await threads.setNextCommand(t.id, first.id, 'stale guess')).toBeUndefined();
+    expect((await threads.getThread(t.id))?.nextCommand).toBeUndefined();
+  });
 });
 
 describe('toEarlierTurn', () => {

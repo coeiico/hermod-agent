@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { AgentConfigSchema, parseConfig } from '../runtime/definition';
 import { renderTemplate } from '../runtime/prompts';
 import { BROWSER_TOOLS, WEB_TASK_TOOLS } from '../tools/catalog';
+import { nextCommandAgent, parseNextCommand } from './background/next_command/agent';
 import { formatReport, webTaskAgent } from './delegated/web_task/agent';
 import { browserCommandAgent, formatEarlierTurns, MAX_EARLIER_TURNS, type EarlierTurn } from './interactive/browser_command/agent';
 import { DELEGATION_TOOLS } from './interactive/browser_command/delegation';
@@ -127,5 +128,23 @@ describe('web_task', () => {
     expect(text).toBe(
       'Web task K1 ended: needs_user.\nSummary: Filled in delivery.\nLeft for the user: Pay.\nPages to show: T7\nSteering that reached it too late to act on:\n- late',
     );
+  });
+});
+
+describe('next_command', () => {
+  it('has no tools and renders its task with the thread and snapshot', () => {
+    expect(nextCommandAgent.tools).toEqual([]);
+    const rendered = renderTemplate(nextCommandAgent.task, { thread_history: formatEarlierTurns([]), snapshot: 'W1 focused' }, 'task.md');
+    expect(rendered).toContain('<browser_snapshot>\nW1 focused\n</browser_snapshot>');
+  });
+
+  it('reads the command from the reply, and nothing from NONE or a rambling reply', () => {
+    expect(parseNextCommand('Put the MDN tabs in a new window')).toBe('Put the MDN tabs in a new window');
+    expect(parseNextCommand('  "Go to the cart"\n')).toBe('Go to the cart');
+    expect(parseNextCommand('Close those\nBecause the user seems done.')).toBe('Close those');
+    expect(parseNextCommand('NONE')).toBeUndefined();
+    expect(parseNextCommand('none.')).toBeUndefined();
+    expect(parseNextCommand('')).toBeUndefined();
+    expect(parseNextCommand('x'.repeat(121))).toBeUndefined();
   });
 });

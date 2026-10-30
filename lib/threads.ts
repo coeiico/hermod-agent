@@ -20,6 +20,8 @@ export interface ThreadSummary {
 export interface Thread extends ThreadSummary {
   /** Finished commands, oldest first, as the popup renders them. */
   turns: RunState[];
+  /** A guess at the user's next command, made after the last turn: the prompt's hint, which Tab fills in. */
+  nextCommand?: string;
 }
 
 const INDEX_KEY = 'threadIndex';
@@ -106,8 +108,21 @@ export function appendTurn(threadId: string, run: RunState): Promise<Thread | un
     let turn: RunState = run.snapshot ? { ...run, snapshot: { ...run.snapshot, text: '' } } : run;
     if (turn.tasks) turn = { ...turn, tasks: Object.fromEntries(Object.entries(turn.tasks).map(([id, task]) => [id, compactTask(task)])) };
     const turns = [...thread.turns.filter((t) => t.id !== run.id), turn];
-    const next: Thread = { ...thread, turns, turnCount: turns.length, updatedAt: Date.now(), lastStatus: run.status, lastEndedAt: run.endedAt ?? Date.now() };
+    // A guess made after the previous turn no longer follows.
+    const { nextCommand: _, ...rest } = thread;
+    const next: Thread = { ...rest, turns, turnCount: turns.length, updatedAt: Date.now(), lastStatus: run.status, lastEndedAt: run.endedAt ?? Date.now() };
     await writeThread(next);
+    return next;
+  });
+}
+
+/** Saves a guess at the next command, unless another turn has finished since the one it follows. */
+export function setNextCommand(threadId: string, afterTurnId: string, command: string): Promise<Thread | undefined> {
+  return serialized(async () => {
+    const thread = await getThread(threadId);
+    if (!thread || thread.turns.at(-1)?.id !== afterTurnId) return undefined;
+    const next: Thread = { ...thread, nextCommand: command };
+    await browser.storage.local.set({ [threadKey(threadId)]: next });
     return next;
   });
 }

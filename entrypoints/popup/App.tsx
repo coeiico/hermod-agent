@@ -82,24 +82,28 @@ function HeaderButton({ label, onClick, children }: { label: string; onClick: ()
 /**
  * The prompt. While a command runs, sending queues the message (or steers it,
  * from the queue) and an empty prompt's button stops the command. Typing a
- * slash offers the slash commands; Tab completes the first.
+ * slash offers the slash commands; Tab completes the first. A guess at the
+ * next command (`hint`) shows in the empty prompt, and Tab fills it in.
  */
 function Composer({
   running,
   disabled,
   placeholder,
+  hint,
   onSubmit,
   onStop,
 }: {
   running: boolean;
   disabled: boolean;
   placeholder: string;
+  hint?: string;
   onSubmit: (text: string) => void;
   onStop: () => void;
 }) {
   const { textInput } = usePromptInputController();
   const hasText = !!textInput.value.trim();
   const slashMatches = matchSlashCommands(textInput.value);
+  const offered = !textInput.value && hint ? hint : undefined;
   return (
     <>
       {slashMatches.length > 0 && (
@@ -121,15 +125,22 @@ function Composer({
             autoFocus
             disabled={disabled}
             className="min-h-12"
-            placeholder={placeholder}
+            placeholder={offered ?? placeholder}
             onKeyDown={(e) => {
-              if (e.key !== 'Tab' || e.shiftKey || !slashMatches.length) return;
+              if (e.key !== 'Tab' || e.shiftKey) return;
+              const completion = slashMatches.length ? `/${slashMatches[0]!.name}` : offered;
+              if (!completion) return;
               e.preventDefault();
-              textInput.setInput(`/${slashMatches[0]!.name}`);
+              textInput.setInput(completion);
             }}
           />
         </PromptInputBody>
-        <PromptInputFooter className="justify-end">
+        <PromptInputFooter className={offered ? 'justify-between' : 'justify-end'}>
+          {offered && (
+            <span className="pl-1 text-ink-3 text-xs">
+              <kbd className="rounded-[6px] border border-line bg-surface-alt px-1.5 py-0.5 font-mono">Tab</kbd> to use the suggestion
+            </span>
+          )}
           <PromptInputSubmit
             variant="ghost"
             className="text-ink hover:text-ink disabled:text-ink-3"
@@ -406,6 +417,7 @@ export default function App() {
                   ? 'Send a follow-up: it waits its turn, or steer it in'
                   : 'Tell Hermod what’s next…'
             }
+            hint={!running && !queue.length && !noKey && view === 'run' ? thread?.nextCommand : undefined}
             onSubmit={submit}
             onStop={stop}
           />

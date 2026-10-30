@@ -52,6 +52,8 @@ Open the prompt and type a command:
 
 If a shortcut clashes with your system or browser, change it on your browser's extension shortcuts page (`chrome://extensions/shortcuts`).
 
+**Press Tab for the next step.** Once a command finishes, the empty prompt suggests what you're likely to ask next in that thread, like "Go to the cart" after adding something to it. Press **Tab** to fill it in, then edit it or press Enter.
+
 **Choose how much it asks.** The mode below the prompt decides when Hermod checks with you first:
 
 | Mode | What it does |
@@ -67,6 +69,7 @@ If a shortcut clashes with your system or browser, change it on your browser's e
 
 - Hermod talks only to the Claude API (`api.anthropic.com`), with your key. There is no Hermod server, account or analytics.
 - Each command sends Claude a summary of your open windows and tabs (titles and addresses), plus whatever the command needs: page text when you ask about a page, a screenshot when you ask how something looks.
+- After each command, Hermod makes one more small call (always on Claude Haiku) with the same summary and the thread so far, to suggest your next command.
 - Hermod has access to all sites so it can read a page when you ask. It reads pages only for a command, never in the background. Browser-internal pages and extension stores can't be read.
 - Your key, settings and threads stay in this browser.
 - A web page can contain text written to steer an AI agent. Hermod's guardrails refuse or always ask about risky actions inside pages, but in **Don't ask** mode a page could still steer its ordinary clicks, and in **Bypass all** it could steer a send, post or delete. Use **Auto** or **Ask first** on sites you don't trust.

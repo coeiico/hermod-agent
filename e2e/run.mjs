@@ -349,7 +349,18 @@ try {
   // worker. The tab in front isn't a ChatGPT or Claude chat, so the export says so.
   const key = (keyName, code, text) =>
     cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', key: keyName, code: keyName, windowsVirtualKeyCode: code, ...(text ? { text } : {}) }, popup);
+  // The guess at the next command: the empty prompt's hint, which Tab fills in.
   await cdp.evaluate(popup, `(() => { document.querySelector('textarea').focus(); return true; })()`);
+  const hint = await cdp.evaluate(popup, `({ placeholder: document.querySelector('textarea').placeholder, tip: document.body.innerText.includes('to use the suggestion') })`);
+  check(hint.placeholder === 'Go to the cart' && hint.tip, `the prompt hints at the guessed next command (${JSON.stringify(hint)})`);
+  await key('Tab', 9);
+  await sleep(100);
+  const accepted = await cdp.evaluate(popup, `document.querySelector('textarea').value`);
+  check(accepted === 'Go to the cart', `Tab fills in the guessed command (${accepted})`);
+  await cdp.evaluate(popup, `(() => { document.querySelector('textarea').select(); return true; })()`);
+  await key('Backspace', 8);
+  await sleep(100);
+
   await cdp.send('Input.insertText', { text: '/exp' }, popup);
   await sleep(200);
   const menu = await cdp.evaluate(popup, `document.querySelector('[aria-label="Slash commands"]')?.innerText ?? ''`);

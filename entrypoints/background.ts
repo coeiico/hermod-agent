@@ -5,8 +5,10 @@
 // Each thread runs one command at a time; anything sent while it runs waits in
 // the thread's queue, or is steered into the running command. Up to
 // MAX_RUNNING threads run at once.
+import { parseNextCommand, streamNextCommand } from '@/ai/agents/background/next_command/agent';
 import { streamBrowserCommand } from '@/ai/agents/interactive/browser_command/agent';
 import { createRunContext, RunCancelled, SteeringInbox, type Limits } from '@/ai/runtime/context';
+import type { Model } from '@/ai/runtime/model';
 import { AnthropicModel, createAnthropicClient } from '@/ai/runtime/providers/anthropic';
 import { exportChat } from '@/ai/tools/chat-export';
 import { plural } from '@/ai/tools/resolve';
@@ -41,6 +43,8 @@ const MAX_RUNNING = 3;
 // The main agent may wait on a web task (up to 20 minutes) and act on steers
 // while it does, so it gets more turns and time than a plain tab command needs.
 const COMMAND_LIMITS: Partial<Limits> = { maxTurns: 20, runTimeoutMs: 30 * 60_000 };
+// A guess at the next command is one tool-less call; a slow one is no longer worth showing.
+const NEXT_COMMAND_LIMITS: Partial<Limits> = { maxTurns: 1, runTimeoutMs: 20_000 };
 
 interface ActiveCommand {
   threadId: string;
@@ -371,6 +375,35 @@ export default defineBackground({
         persistSoon();
         pump();
         await broadcastState();
+        if (updated && cmd.ctrl.state.status === 'done') void suggestNextCommand(updated, model);
+      }
+    }
+
+    /** Guesses the thread's next command for the prompt's hint. Best effort: a failure only means no hint. */
+    async function suggestNextCommand(thread: threads.Thread, model: Model) {
+      const last = thread.turns.at(-1);
+      if (!last) return;
+      try {
+        const ctx = createRunContext({
+          cancel: new AbortController().signal,
+          approval: () => 'ask',
+          confirm: async () => false,
+          limits: NEXT_COMMAND_LIMITS,
+        });
+        const snapshot = await buildSnapshot();
+        const events = streamNextCommand(ctx, { snapshot: snapshot.text, earlierTurns: thread.turns.map(threads.toEarlierTurn) }, { model });
+        let reply = '';
+        for await (const event of events) if (event.type === 'run-finished') reply = event.result.text;
+        const command = parseNextCommand(reply);
+        if (!command) return;
+        // Not saved when another command has finished in the thread since.
+        const updated = await threads.setNextCommand(thread.id, last.id, command);
+        if (updated && openThread?.id === thread.id) {
+          openThread = updated;
+          await broadcastState();
+        }
+      } catch (err) {
+        console.warn('[hermod] guessing the next command failed', err instanceof Error ? err.message : err);
       }
     }
 

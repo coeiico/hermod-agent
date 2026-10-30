@@ -21,6 +21,7 @@ Where things live in Hermod Agent, one line each. Read it to find your way befor
 | `ai/models.ts` | The models offered in the UI, with prices for the per-command cost |
 | `ai/agents/interactive/browser_command/` | The main agent: runs the user's command. `delegation.ts` starts, steers and waits on web tasks |
 | `ai/agents/delegated/web_task/` | The web task agent: works inside pages, in its own window, for the main agent |
+| `ai/agents/background/next_command/` | Guesses the user's next command after one finishes: the prompt's hint, which Tab fills in |
 | `ai/agents/_template/` | Starting point for a new agent; its `config.yaml` documents every option |
 | `ai/agents/agents.test.ts` | Checks every agent's prompt headers and config |
 | `ai/tools/catalog.ts` | Every tool, in the fixed order that is part of the prompt-cache prefix |
