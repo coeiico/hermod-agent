@@ -8,11 +8,11 @@ Hermod is a Manifest V3 extension for Chromium browsers (Chrome, Edge, Brave, Vi
 
 ## What it can do
 
-- **Tabs and windows.** "Move this tab to the window with my GitHub stuff." "Close all YouTube tabs." "Put this window on the left screen, maximised." "Sort these tabs by site." "Copy these tabs as a Markdown list."
-- **Your library.** "Bookmark these three tabs into a Research folder." "Reopen the window I just closed." "Delete today's history from example.com." "Pause my downloads."
-- **Reading pages.** "Which of these tabs mentions pricing?" "List the links on this page." "What font is the heading on this page?"
-- **Exporting AI chats.** "Export this chat to Markdown." "Save this conversation to my downloads." Or type `/export_chat_to_markdown`, which runs without the model, free. Works on ChatGPT and Claude.ai conversations: the whole conversation is saved word for word, each message in a `<user>` or `<assistant>` tag, without passing through the model.
-- **Work inside websites.** "Find a USB-C hub under $40 on this shop and add it to my cart." Hermod hands this to a web task, which works in its own window while you keep browsing. You can watch it, steer it with a follow-up message, or stop it.
+- **Tabs and windows.** Open, close, move, sort, pin, mute and reload tabs; merge windows, or move and resize them across your screens; copy a set of tabs as a list.
+- **Bookmarks, history and downloads.** Create, file and sort bookmarks; search or clear history; reopen closed tabs and windows; pause, resume or cancel downloads.
+- **Reading pages.** Answer questions about the pages you have open, pull out their text or links, and look at how something on a page is styled.
+- **Exporting AI chats.** Save a ChatGPT or Claude conversation to your downloads as Markdown, word for word, without it passing through the model. The `/export_chat_to_markdown` slash command does the same straight away, with no API call.
+- **Working inside websites.** Hand off a multi-step task on a site, such as searching, filling in a form or adding to a cart. It runs in a window of its own while you keep browsing, and you can watch it, steer it or stop it.
 
 Commands come in threads, so a follow-up like "close those" or "undo that" knows what you mean. Threads are saved, and you can come back to one later.
 
@@ -39,7 +39,7 @@ Hermod uses your own [Claude Console](https://console.anthropic.com/) API key. T
 
 1. Click the Hermod icon in the toolbar (or press **Alt+Space**) and open **Settings**.
 2. Paste your API key.
-3. Keep the default passphrase (`dank memes`) or choose your own, and click **Save key**.
+3. Choose a passphrase and click **Save key**.
 
 The key is encrypted with your passphrase and stored only in this browser. After the browser restarts, Hermod asks for the passphrase once to unlock it again.
 
@@ -83,3 +83,7 @@ npm run e2e      # end-to-end run in headless Chromium against a local test shop
 `npm run e2e` needs Playwright's Chromium (`npx playwright install chromium`) or a browser path in `HERMOD_E2E_CHROME`. It answers with a scripted fake Claude API, so it spends no API credit.
 
 Contributor and agent notes live in [CLAUDE.md](CLAUDE.md) and [.agents/](.agents/): how agents are built is in [.agents/instructions/hermod-agents-overview.md](.agents/instructions/hermod-agents-overview.md), and where everything lives is in [.agents/memory/codebase-map.md](.agents/memory/codebase-map.md).
+
+## License
+
+[MIT](LICENSE)

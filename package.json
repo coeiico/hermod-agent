@@ -3,6 +3,11 @@
   "description": "Hermod Agent: plain-language browser commands for Chromium browsers, powered by Claude",
   "private": true,
   "version": "0.1.0",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/coeiico/hermod-agent.git"
+  },
   "type": "module",
   "scripts": {
     "brand:icons": "bash scripts/generate-icons.sh",
